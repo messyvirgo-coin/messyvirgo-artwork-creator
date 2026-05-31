@@ -1,5 +1,8 @@
-## ADDED Requirements
+# avatar-reference-set-generation Specification
 
+## Purpose
+TBD - created by archiving change add-avatar-reference-set-generation. Update Purpose after archive.
+## Requirements
 ### Requirement: Source Avatar Validation
 The system SHALL accept a transparent PNG avatar as the source image and reject unsupported source files before starting generation.
 
@@ -68,16 +71,24 @@ The system SHALL load common avatar generation prompts from a YAML prompt librar
 - **WHEN** the system composes a full-body prompt
 - **THEN** the prompt identifies Messy as an elegant crypto finance funds allocator and preserves elegant long trousers rather than a mini skirt
 
-### Requirement: JPG Background Removal Extension
-The system SHALL provide a post-processing extension that converts generated JPG/JPEG files into PNG files with alpha transparency by removing edge-connected background pixels.
+### Requirement: Background Removal Extension
+The system SHALL provide a `remove-background` post-processing command that converts generated JPG/JPEG or PNG files into PNG files with alpha transparency using `rembg` segmentation by default (`isnet-anime` model) and an optional fast flood-fill method.
 
 #### Scenario: Directory conversion
-- **WHEN** a user runs background removal with an input directory containing JPG/JPEG files
-- **THEN** the system writes PNG files with matching stems to the configured output directory or to a sibling transparent output directory by default
+- **WHEN** a user runs background removal with an input directory containing image files
+- **THEN** the system writes transparent PNG files with matching stems to the configured output directory or to a sibling `-transparent` output directory by default
 
 #### Scenario: Single file conversion
-- **WHEN** a user runs background removal with an input JPG/JPEG file
-- **THEN** the system writes one PNG file with the matching stem
+- **WHEN** a user runs background removal with `--input-file`
+- **THEN** the system writes one transparent PNG file with the matching stem
+
+#### Scenario: Default rembg matting
+- **WHEN** a user runs background removal without specifying `--method`
+- **THEN** the system uses `rembg` with the configured model (default `isnet-anime`) after optional pre-sharpening
+
+#### Scenario: Flood-fill fallback
+- **WHEN** a user runs background removal with `--method flood`
+- **THEN** the system removes edge-connected background pixels matching the corner color without requiring `rembg`
 
 #### Scenario: Existing transparent output
 - **WHEN** a converted PNG already exists
@@ -86,6 +97,17 @@ The system SHALL provide a post-processing extension that converts generated JPG
 #### Scenario: Background removal summary
 - **WHEN** background removal finishes
 - **THEN** the system reports planned, converted, skipped, and failed counts
+
+### Requirement: Optional Sharpening Before Matting
+The system SHALL apply a mild unsharp mask before background removal by default and SHALL provide a standalone `sharpen` command for two-step pipelines.
+
+#### Scenario: Pre-sharpen on by default
+- **WHEN** a user runs `remove-background` without `--no-pre-sharpen`
+- **THEN** the system sharpens each input image before matting
+
+#### Scenario: Standalone sharpen
+- **WHEN** a user runs `sharpen` with `--input-dir` or `--input-file`
+- **THEN** the system writes sharpened PNG files to the configured output directory or a sibling `-sharpened` directory by default
 
 ### Requirement: One Image Test Mode
 The system SHALL provide a test mode that generates exactly one image using the normal provider, output, and metadata path.
@@ -150,3 +172,4 @@ The system SHALL support resuming an incomplete reference set without regenerati
 #### Scenario: Regeneration is requested
 - **WHEN** a user explicitly requests regeneration
 - **THEN** the system regenerates matching planned items even if previous successful outputs exist
+

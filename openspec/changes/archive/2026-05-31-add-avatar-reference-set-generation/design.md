@@ -16,7 +16,7 @@ The user wants OpenRouter as the image provider, Seedream 4.5 as the default tar
 - Make failed or partial batches inspectable and resumable.
 - Keep prompt and preset construction in a reusable YAML prompt library that can be tested without calling OpenRouter.
 - Provide a test mode that generates exactly one planned image for quick validation.
-- Provide a post-processing command that converts generated JPG/JPEG files into transparent PNGs by removing simple neutral backgrounds.
+- Provide post-processing commands that convert generated JPG/JPEG (or PNG) files into transparent PNGs via `rembg` segmentation (default) or a fast corner flood-fill fallback, with optional pre-matting sharpening.
 
 **Non-Goals:**
 
@@ -132,16 +132,22 @@ Alternatives considered:
 
 Rationale: One-image test mode gives a cheap end-to-end validation path before spending on a full batch.
 
-### Provide JPG Background Removal as a Post-Processing Extension
+### Provide Background Removal and Sharpening as Post-Processing
 
-OpenRouter may return JPEG images even when the prompt requests a transparent or neutral background. The system will provide a separate `remove-background` command that accepts `--input-dir` or `--input-file`, removes edge-connected background pixels matching the corner background color, and saves transparent PNG files. If no output directory is specified, it will create a sibling directory with a `-transparent` suffix.
+OpenRouter (including Seedream 4.5) typically returns opaque PNG/JPEG with a painted background even when prompts request transparency. The system provides:
+
+- `remove-background` — accepts `--input-dir` or `--input-file`, runs optional unsharp-mask sharpening (on by default), then matting via `rembg` with model `isnet-anime` (default) or a fast `flood` corner color fill, then zeros alpha on near-white neutral pixels. Writes transparent PNGs to `--output-dir` or a sibling `<input>-transparent` directory.
+- `sharpen` — standalone unsharp-mask pass for previewing or two-step pipelines (`sharpen` then `remove-background --no-pre-sharpen`).
+
+`rembg` is an optional extra (`pip install -e ".[rembg]"`). The flood method needs no ONNX runtime but is poor on hair.
 
 Alternatives considered:
 
-- Require model-native transparency only. This is unreliable across models and providers.
-- Add an AI segmentation dependency. This can produce better masks, but it adds model/runtime complexity that is unnecessary for the requested neutral-background reference outputs.
+- Require model-native transparency only. Unreliable for Seedream via OpenRouter.
+- Flood-fill only. Fast but weak on hair and fine edges; kept as `--method flood`.
+- Edge-connected flood as the only path. Superseded by `rembg` for production quality.
 
-Rationale: The prompt already asks for plain transparent or neutral backgrounds, so deterministic edge-connected removal is a pragmatic first pass and keeps the post-processing step local.
+Rationale: AI matting matches anime hair and soft edges; sharpening before matting reduces mushy boundaries; flood remains for quick experiments.
 
 ### Configure Provider, Model, and Batch Settings Separately
 
@@ -192,5 +198,5 @@ Rollback is removal of the new command/service path, OpenRouter configuration, a
 
 ## Open Questions
 
-- The exact OpenRouter model identifier for Seedream 4.5 should be verified against OpenRouter documentation during implementation.
-- The implementation entry point should follow the codebase shape discovered during apply: CLI if this remains a utility project, or API/UI workflow if an application skeleton exists by then.
+- Resolved: default OpenRouter model id is `bytedance-seed/seedream-4.5`.
+- Resolved: entry point is the `avatar_reference_generator` Python package CLI (`python3 -m avatar_reference_generator`) with subcommands `generate`, `remove-background`, and `sharpen`.

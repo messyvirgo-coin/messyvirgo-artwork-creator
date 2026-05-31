@@ -55,3 +55,11 @@
 - [x] 7.3 Add a background-removal extension that converts JPG/JPEG outputs to transparent PNG files with friendly `--input-dir` and `--input-file` options.
 - [x] 7.4 Add tests for prompt wording and JPG-to-transparent-PNG conversion.
 - [x] 7.5 Update the runbook with the background-removal command.
+
+## 8. Packaging, Documentation, and Post-Processing Polish
+
+- [x] 8.1 Add `sharpen` CLI and integrate optional pre-sharpen into `remove-background` (unsharp mask on by default).
+- [x] 8.2 Implement `rembg` matting (`isnet-anime` default) with `flood` fallback and near-white alpha cleanup.
+- [x] 8.3 Add `rembg[cpu]` optional extra in `pyproject.toml` and document install in README.
+- [x] 8.4 Add README overview, CLI reference, and `docs/avatar-reference-runbook.md` operational guide.
+- [x] 8.5 Point package metadata and README clone URL at `messyvirgo-coin/messyvirgo-avatar-creator` after repo transfer.

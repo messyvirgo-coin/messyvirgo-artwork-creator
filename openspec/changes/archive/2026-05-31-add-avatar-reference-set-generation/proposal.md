@@ -13,8 +13,10 @@ Users need a repeatable way to turn one transparent PNG anime avatar into a cons
 - Define common reusable prompts in a YAML prompt library with shared base instructions plus angle-specific and shot-specific prompt fragments.
 - Refine the default prompts to describe Messy as an elegant crypto finance funds allocator and preserve long trousers in full-body views.
 - Add a test mode that generates only one planned image for quick model, credential, and prompt validation.
-- Add a background-removal extension that converts generated JPG/JPEG images into transparent PNGs.
+- Add a background-removal extension that converts generated JPG/JPEG (or PNG) outputs into transparent PNGs using `rembg` (`isnet-anime` by default) with an optional fast `flood` fallback.
+- Add optional pre-matting unsharp-mask sharpening (on by default in `remove-background`) and a standalone `sharpen` command for two-step pipelines.
 - Save generated images with metadata that records source input, model, prompt, angle, shot type, and generation status.
+- Ship a Python package (`avatar_reference_generator` CLI), README, operational runbook, and `.env.example` for setup.
 - Provide validation and clear errors for unsupported input files, missing credentials, failed generations, and incomplete batches.
 
 ## Capabilities
