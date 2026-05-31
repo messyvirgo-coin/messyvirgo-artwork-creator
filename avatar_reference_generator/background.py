@@ -3,11 +3,20 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Literal
 
 from PIL import Image
 
+from .sharpen import SharpenSettings, sharpen_image
 
-SUPPORTED_INPUT_SUFFIXES = {".jpg", ".jpeg"}
+RemovalMethod = Literal["flood", "rembg"]
+DEFAULT_REMBG_MODEL = "isnet-anime"
+DEFAULT_WHITE_THRESHOLD = 242
+DEFAULT_MAX_NEUTRAL_SPREAD = 18
+DEFAULT_FRINGE_ALPHA = 220
+
+SUPPORTED_INPUT_SUFFIXES = {".jpg", ".jpeg", ".png"}
+_REMBG_SESSIONS: dict[str, Any] = {}
 
 
 @dataclass(frozen=True)
@@ -18,9 +27,23 @@ class BackgroundRemovalSummary:
     failed: int
 
 
-def remove_backgrounds(source: Path, output_dir: Path, *, tolerance: int = 28, overwrite: bool = False) -> BackgroundRemovalSummary:
+def remove_backgrounds(
+    source: Path,
+    output_dir: Path,
+    *,
+    method: RemovalMethod = "rembg",
+    model: str = DEFAULT_REMBG_MODEL,
+    tolerance: int = 28,
+    white_threshold: int = DEFAULT_WHITE_THRESHOLD,
+    alpha_matting: bool = False,
+    pre_sharpen: bool = True,
+    sharpen: SharpenSettings | None = None,
+    overwrite: bool = False,
+) -> BackgroundRemovalSummary:
     inputs = _resolve_inputs(source)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    session = _get_rembg_session(model) if method == "rembg" else None
 
     converted = 0
     skipped = 0
@@ -31,15 +54,147 @@ def remove_backgrounds(source: Path, output_dir: Path, *, tolerance: int = 28, o
             skipped += 1
             continue
         try:
-            remove_background(input_path, output_path, tolerance=tolerance)
+            remove_background(
+                input_path,
+                output_path,
+                method=method,
+                model=model,
+                tolerance=tolerance,
+                white_threshold=white_threshold,
+                alpha_matting=alpha_matting,
+                pre_sharpen=pre_sharpen,
+                sharpen=sharpen,
+                session=session,
+            )
             converted += 1
         except Exception:
             failed += 1
     return BackgroundRemovalSummary(planned=len(inputs), converted=converted, skipped=skipped, failed=failed)
 
 
-def remove_background(input_path: Path, output_path: Path, *, tolerance: int = 28) -> None:
+def remove_background(
+    input_path: Path,
+    output_path: Path,
+    *,
+    method: RemovalMethod = "rembg",
+    model: str = DEFAULT_REMBG_MODEL,
+    tolerance: int = 28,
+    white_threshold: int = DEFAULT_WHITE_THRESHOLD,
+    alpha_matting: bool = False,
+    pre_sharpen: bool = True,
+    sharpen: SharpenSettings | None = None,
+    session: Any | None = None,
+) -> None:
+    if method == "rembg":
+        _remove_background_rembg(
+            input_path,
+            output_path,
+            model=model,
+            session=session,
+            white_threshold=white_threshold,
+            alpha_matting=alpha_matting,
+            pre_sharpen=pre_sharpen,
+            sharpen=sharpen,
+        )
+        return
+    _remove_background_flood(
+        input_path,
+        output_path,
+        tolerance=tolerance,
+        pre_sharpen=pre_sharpen,
+        sharpen=sharpen,
+    )
+
+
+def _remove_background_rembg(
+    input_path: Path,
+    output_path: Path,
+    *,
+    model: str,
+    session: Any | None,
+    white_threshold: int,
+    alpha_matting: bool,
+    pre_sharpen: bool,
+    sharpen: SharpenSettings | None,
+) -> None:
+    try:
+        from rembg import remove as rembg_remove
+    except ImportError as exc:
+        raise ImportError(
+            "AI background removal requires rembg with an ONNX runtime. Install with: "
+            'pip install -e ".[rembg]"  (or: pip install "rembg[cpu]")'
+        ) from exc
+
     image = Image.open(input_path).convert("RGBA")
+    if pre_sharpen:
+        image = sharpen_image(image, settings=sharpen)
+    active_session = session if session is not None else _get_rembg_session(model)
+    result = rembg_remove(
+        image,
+        session=active_session,
+        alpha_matting=alpha_matting,
+        post_process_mask=True,
+    )
+    if white_threshold > 0:
+        _strip_near_white_remnants(result, threshold=white_threshold)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    result.save(output_path, format="PNG")
+
+
+def _strip_near_white_remnants(
+    image: Image.Image,
+    *,
+    threshold: int = DEFAULT_WHITE_THRESHOLD,
+    max_neutral_spread: int = DEFAULT_MAX_NEUTRAL_SPREAD,
+    fringe_alpha: int = DEFAULT_FRINGE_ALPHA,
+) -> Image.Image:
+    """Remove leftover white background trapped inside the mask (hair gaps, between legs)."""
+    pixels = image.load()
+    width, height = image.size
+    for y in range(height):
+        for x in range(width):
+            red, green, blue, alpha = pixels[x, y]
+            if alpha == 0:
+                continue
+            spread = max(red, green, blue) - min(red, green, blue)
+            if red >= threshold and green >= threshold and blue >= threshold and spread <= max_neutral_spread:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+            if (
+                alpha < fringe_alpha
+                and red >= threshold - 12
+                and green >= threshold - 12
+                and blue >= threshold - 12
+                and spread <= max_neutral_spread
+            ):
+                pixels[x, y] = (0, 0, 0, 0)
+    return image
+
+
+def _get_rembg_session(model: str) -> Any:
+    if model not in _REMBG_SESSIONS:
+        try:
+            from rembg import new_session
+        except ImportError as exc:
+            raise ImportError(
+                "AI background removal requires rembg. Install with: "
+                'pip install -e ".[rembg]"  (or: pip install "rembg[cpu]")'
+            ) from exc
+        _REMBG_SESSIONS[model] = new_session(model)
+    return _REMBG_SESSIONS[model]
+
+
+def _remove_background_flood(
+    input_path: Path,
+    output_path: Path,
+    *,
+    tolerance: int,
+    pre_sharpen: bool,
+    sharpen: SharpenSettings | None,
+) -> None:
+    image = Image.open(input_path).convert("RGBA")
+    if pre_sharpen:
+        image = sharpen_image(image, settings=sharpen)
     pixels = image.load()
     width, height = image.size
     background = _average_corner_color(image)
@@ -58,7 +213,7 @@ def remove_background(input_path: Path, output_path: Path, *, tolerance: int = 2
 def _resolve_inputs(source: Path) -> list[Path]:
     if source.is_file():
         if source.suffix.lower() not in SUPPORTED_INPUT_SUFFIXES:
-            raise ValueError("Background removal input must be a JPG/JPEG file or directory")
+            raise ValueError("Background removal input must be a JPG, JPEG, or PNG file or directory")
         return [source]
     if source.is_dir():
         return sorted(path for path in source.iterdir() if path.suffix.lower() in SUPPORTED_INPUT_SUFFIXES)

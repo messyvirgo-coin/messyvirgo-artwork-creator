@@ -6,6 +6,13 @@ import sys
 from pathlib import Path
 
 from .background import remove_backgrounds
+from .sharpen import (
+    DEFAULT_SHARPEN_PERCENT,
+    DEFAULT_SHARPEN_RADIUS,
+    DEFAULT_SHARPEN_THRESHOLD,
+    SharpenSettings,
+    sharpen_images,
+)
 from .config import GenerationConfig, default_model, default_output_dir, default_prompt_library, load_env_file
 from .executor import run_generation
 from .openrouter import OpenRouterClient
@@ -32,17 +39,75 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_background_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Convert generated JPGs to transparent-background PNGs.")
-    parser.add_argument("source", nargs="?", type=Path, help="JPG/JPEG file or directory containing JPG/JPEG files.")
-    parser.add_argument("--input-dir", type=Path, help="Directory containing generated JPG/JPEG files.")
-    parser.add_argument("--input-file", type=Path, help="Single generated JPG/JPEG file.")
+    parser = argparse.ArgumentParser(description="Convert generated images to transparent-background PNGs.")
+    parser.add_argument("source", nargs="?", type=Path, help="PNG/JPG file or directory containing image files.")
+    parser.add_argument("--input-dir", type=Path, help="Directory containing generated PNG/JPG files.")
+    parser.add_argument("--input-file", type=Path, help="Single generated PNG/JPG file.")
     parser.add_argument("--output-dir", type=Path, help="Directory for transparent PNG outputs. Defaults to <input>-transparent.")
-    parser.add_argument("--tolerance", type=int, default=28, help="Background color tolerance for edge-connected removal.")
+    parser.add_argument(
+        "--method",
+        choices=("rembg", "flood"),
+        default="rembg",
+        help="rembg uses AI segmentation (best for hair); flood uses corner color flood-fill (fast, rough).",
+    )
+    parser.add_argument(
+        "--model",
+        default="isnet-anime",
+        help="rembg model name (default: isnet-anime for anime characters).",
+    )
+    parser.add_argument("--tolerance", type=int, default=28, help="Color tolerance for --method flood only.")
+    parser.add_argument(
+        "--white-threshold",
+        type=int,
+        default=242,
+        help="After rembg, zero alpha on near-white neutral pixels at or above this value (0 disables).",
+    )
+    parser.add_argument(
+        "--alpha-matting",
+        action="store_true",
+        help="Enable rembg alpha matting (slower; may print pymatting warnings).",
+    )
+    parser.add_argument(
+        "--no-pre-sharpen",
+        action="store_true",
+        help="Skip unsharp-mask sharpening before background removal (on by default).",
+    )
+    parser.add_argument(
+        "--sharpen-radius",
+        type=float,
+        default=DEFAULT_SHARPEN_RADIUS,
+        help="Unsharp mask radius for --pre-sharpen (default: 2).",
+    )
+    parser.add_argument(
+        "--sharpen-percent",
+        type=int,
+        default=DEFAULT_SHARPEN_PERCENT,
+        help="Unsharp mask strength percent for --pre-sharpen (default: 130).",
+    )
+    parser.add_argument(
+        "--sharpen-threshold",
+        type=int,
+        default=DEFAULT_SHARPEN_THRESHOLD,
+        help="Unsharp mask threshold for --pre-sharpen (default: 3).",
+    )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing PNG outputs.")
     return parser
 
 
-def _resolve_background_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+def build_sharpen_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Sharpen generated images before background removal.")
+    parser.add_argument("source", nargs="?", type=Path, help="PNG/JPG file or directory containing image files.")
+    parser.add_argument("--input-dir", type=Path, help="Directory containing generated PNG/JPG files.")
+    parser.add_argument("--input-file", type=Path, help="Single generated PNG/JPG file.")
+    parser.add_argument("--output-dir", type=Path, help="Directory for sharpened PNG outputs. Defaults to <input>-sharpened.")
+    parser.add_argument("--sharpen-radius", type=float, default=DEFAULT_SHARPEN_RADIUS)
+    parser.add_argument("--sharpen-percent", type=int, default=DEFAULT_SHARPEN_PERCENT)
+    parser.add_argument("--sharpen-threshold", type=int, default=DEFAULT_SHARPEN_THRESHOLD)
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing PNG outputs.")
+    return parser
+
+
+def _resolve_postprocess_paths(args: argparse.Namespace, *, output_suffix: str) -> tuple[Path, Path]:
     provided_sources = [source for source in (args.source, args.input_dir, args.input_file) if source is not None]
     if len(provided_sources) != 1:
         raise SystemExit("Provide exactly one of SOURCE, --input-dir, or --input-file.")
@@ -51,10 +116,26 @@ def _resolve_background_paths(args: argparse.Namespace) -> tuple[Path, Path]:
     output_dir = args.output_dir
     if output_dir is None:
         if source.is_file():
-            output_dir = source.parent / f"{source.stem}-transparent"
+            output_dir = source.parent / f"{source.stem}-{output_suffix}"
         else:
-            output_dir = source.with_name(f"{source.name}-transparent")
+            output_dir = source.with_name(f"{source.name}-{output_suffix}")
     return source, output_dir
+
+
+def _resolve_background_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    return _resolve_postprocess_paths(args, output_suffix="transparent")
+
+
+def _resolve_sharpen_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    return _resolve_postprocess_paths(args, output_suffix="sharpened")
+
+
+def _sharpen_settings_from_args(args: argparse.Namespace) -> SharpenSettings:
+    return SharpenSettings(
+        radius=args.sharpen_radius,
+        percent=args.sharpen_percent,
+        threshold=args.sharpen_threshold,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -64,8 +145,45 @@ def main(argv: list[str] | None = None) -> int:
         args = build_background_parser().parse_args(raw_args[1:])
         if args.tolerance < 0:
             raise SystemExit("--tolerance must be zero or greater")
+        if args.white_threshold < 0 or args.white_threshold > 255:
+            raise SystemExit("--white-threshold must be between 0 and 255")
+        if args.sharpen_radius <= 0:
+            raise SystemExit("--sharpen-radius must be greater than zero")
+        if args.sharpen_percent <= 0:
+            raise SystemExit("--sharpen-percent must be greater than zero")
+        if args.sharpen_threshold < 0:
+            raise SystemExit("--sharpen-threshold must be zero or greater")
         source, output_dir = _resolve_background_paths(args)
-        summary = remove_backgrounds(source, output_dir, tolerance=args.tolerance, overwrite=args.overwrite)
+        summary = remove_backgrounds(
+            source,
+            output_dir,
+            method=args.method,
+            model=args.model,
+            tolerance=args.tolerance,
+            white_threshold=args.white_threshold,
+            alpha_matting=args.alpha_matting,
+            pre_sharpen=not args.no_pre_sharpen,
+            sharpen=_sharpen_settings_from_args(args),
+            overwrite=args.overwrite,
+        )
+        print(json.dumps(summary.__dict__, indent=2))
+        return 1 if summary.failed else 0
+
+    if raw_args and raw_args[0] == "sharpen":
+        args = build_sharpen_parser().parse_args(raw_args[1:])
+        if args.sharpen_radius <= 0:
+            raise SystemExit("--sharpen-radius must be greater than zero")
+        if args.sharpen_percent <= 0:
+            raise SystemExit("--sharpen-percent must be greater than zero")
+        if args.sharpen_threshold < 0:
+            raise SystemExit("--sharpen-threshold must be zero or greater")
+        source, output_dir = _resolve_sharpen_paths(args)
+        summary = sharpen_images(
+            source,
+            output_dir,
+            settings=_sharpen_settings_from_args(args),
+            overwrite=args.overwrite,
+        )
         print(json.dumps(summary.__dict__, indent=2))
         return 1 if summary.failed else 0
 

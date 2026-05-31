@@ -1,55 +1,77 @@
 base_prompt: >
-  Use the provided transparent PNG anime avatar as the strict character
-  reference. Preserve the same identity, face shape, facial expression language,
-  hairstyle, hair color, eye color, outfit, accessories, body proportions,
-  silhouette, line art style, shading style, and color palette. Recreate the
-  character cleanly for the requested camera view and framing. The result should
-  be a clean production reference image of the same character, not a redesign.
-  Messy is an elegant crypto finance funds allocator with polished, composed
-  presence, but this role must not change her outfit or accessories. Preserve
-  the exact visible outfit from the source avatar: black sleeveless blazer-style
-  vest, black detached sleeve / cold-shoulder styling, grey V-neck inner top,
-  single silver button, long dark wavy hair, blue eyes, and no added props.
-  For views where the lower body must be inferred, use elegant tailored black
-  long trousers matching the blazer.
+  Output exactly one character and nobody else. The attached PNG is identity
+  reference only: recreate that same person once in the requested view and
+  framing. Do not place the reference image, a second copy, a twin, a clone, a
+  shadow duplicate, or any extra person in the output. Do not create a
+  side-by-side comparison, before-and-after pair, turnaround sheet, model sheet,
+  or multi-pose lineup. Use the provided transparent PNG anime avatar as the
+  strict character reference. Preserve the same identity, face shape, facial
+  expression language, hairstyle, hair color, eye color, outfit, accessories,
+  body proportions, silhouette, line art style, shading style, and color
+  palette. Recreate the character cleanly for the requested camera view and
+  framing. The result should be a clean production reference image of the same
+  character, not a redesign. Messy is an elegant crypto finance funds allocator
+  with polished, composed presence. Preserve the exact visible outfit from the
+  source avatar and you must not add props. For views where the lower body must
+  be inferred, use elegant tailored black long trousers matching the blazer.
 
 negative_prompt: >
-  Do not redesign the character. Do not change clothing, colors, apparent age,
-  body proportions, hairstyle, facial features, species traits, accessories, or
-  art style. Avoid extra limbs, missing limbs, distorted hands, asymmetrical
-  eyes, changed outfit details, unrelated props, text, watermark, logo, busy
-  background, cropped full-body shots, mini skirt, very short skirt, or
-  revealing clubwear. Do not add papers, documents, clipboard, tablet, phone,
-  laptop, jewelry, handbag, tie, glasses, or new accessories. Do not replace her
-  long trousers with a mini skirt.
+  Do not draw two characters, a second person, a duplicate figure, twins, a
+  clone, a crowd, a duo, or multiple people. Do not show the source reference
+  image inside the output, a mirror reflection that reads as a second character,
+  a ghost echo, or a split frame with more than one figure. Do not create a
+  character sheet, turnaround sheet, pose chart, or lineup with several versions
+  of the character. Do not redesign the character. Do not change clothing,
+  colors, apparent age, body proportions, hairstyle, facial features, species
+  traits, accessories, or art style. Avoid extra limbs, missing limbs, distorted
+  hands, asymmetrical eyes, changed outfit details, unrelated props, text,
+  watermark, logo, busy background, cropped full-body shots, mini skirt, very
+  short skirt, or revealing clubwear. Do not add papers, documents, clipboard,
+  tablet, phone, laptop, jewelry, handbag, tie, glasses, or new accessories. Do
+  not replace her long trousers with a mini skirt.
 
 composition: >
-  Use a plain transparent or simple neutral background if transparency is not
-  supported by the model. Keep the character centered, fully visible for the
-  requested framing, and suitable as a reusable reference image.
-
+  Solo subject only: exactly one character in the frame and zero other people.
+  Use a plain empty white background with no other figures, silhouettes, or
+  partial bodies at the edges. The single character must be centered and fully
+  visible for the requested framing.
+  
 angles:
   front:
-    prompt: "front view, character facing the camera directly, symmetrical reference pose"
+    prompt: "front view, character faces the camera directly, nose toward lens, both eyes visible"
   front_45_left:
-    prompt: "three-quarter front view, character turned 45 degrees to their left, face and outfit still clearly visible"
+    prompt: "three-quarter front view, body yawed 45 degrees to the character's left, face still readable"
   front_45_right:
-    prompt: "three-quarter front view, character turned 45 degrees to their right, face and outfit still clearly visible"
+    prompt: "three-quarter front view, body yawed 45 degrees to the character's right, face still readable"
   left_side:
-    prompt: "clean left side profile view, true side-facing character reference"
+    prompt: "strict left side profile, 90 degrees to camera, one eye and one cheek visible"
   right_side:
-    prompt: "clean right side profile view, true side-facing character reference"
+    prompt: "strict right side profile, 90 degrees to camera, one eye and one cheek visible"
   back_45_left:
-    prompt: "three-quarter rear view, character turned 45 degrees to their left, back details visible"
+    prompt: "three-quarter rear view, body yawed 45 degrees to the character's left, back of head and shoulders visible"
   back_45_right:
-    prompt: "three-quarter rear view, character turned 45 degrees to their right, back details visible"
+    prompt: "three-quarter rear view, body yawed 45 degrees to the character's right, back of head and shoulders visible"
   back:
-    prompt: "back view, rear-facing character reference, outfit and hair visible from behind"
+    prompt: "back view, character's back to the camera, rear of head and outfit visible"
 
 shots:
   portrait:
-    prompt: "portrait close-up from head to upper shoulders, centered composition, face details clear, exact same black blazer vest and grey V-neck inner top visible, no props"
+    prompt: >
+      Tight head-and-shoulders portrait only. Frame from the top of the head down to
+      the upper chest, cropping at or just below the collarbone. The face should
+      dominate the image. Show neck, shoulders, and upper blazer lapels only. Do not
+      show the waist, hips, belt, hands, arms below the upper arm, or any part of the
+      legs. This is not a half-body or full-body shot.
   half_body:
-    prompt: "half-body reference from head to hips, centered composition, hands visible only if naturally in frame, exact same black blazer vest, cold-shoulder sleeve styling, grey V-neck inner top, single silver button, no props"
+    prompt: >
+      Waist-up half-body reference. Frame from the top of the head down to the hip
+      line or belt, including the full torso, blazer, arms, and hands if visible.
+      The face should be clearly visible but smaller in the frame than in a portrait.
+      Do not crop at the shoulders or upper chest only. Do not show knees, lower
+      legs, or feet. This is not a portrait close-up and not a full-body shot.
   full_body:
-    prompt: "full-body reference from head to feet, entire character visible with no cropping, exact same upper outfit, clearly wearing elegant tailored black long trousers matching the blazer, not a mini skirt, no props or accessories"
+    prompt: >
+      Full-length standing reference. Frame from the top of the head to the soles of
+      the feet with a small margin above the head and below the feet. Show the entire
+      body, outfit, and legs. Do not crop at the waist, hips, or knees. This is not a
+      portrait or half-body shot.

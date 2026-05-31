@@ -10,7 +10,8 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from avatar_reference_generator.background import remove_backgrounds
+from avatar_reference_generator.background import _strip_near_white_remnants, remove_backgrounds
+from avatar_reference_generator.sharpen import sharpen_image
 from avatar_reference_generator.config import GenerationConfig, load_env_file
 from avatar_reference_generator.cli import main
 from avatar_reference_generator.executor import run_generation
@@ -104,8 +105,8 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
         prompt = library.compose_prompt("front_45_left", "half_body")
 
         self.assertIn("strict character reference", prompt)
-        self.assertIn("45 degrees to their left", prompt)
-        self.assertIn("head to hips", prompt)
+        self.assertIn("character's left", prompt)
+        self.assertIn("hip line", prompt)
         self.assertIn("Do not redesign", library.negative_prompt)
 
     def test_prompt_library_describes_messy_as_elegant_allocator_with_long_trousers(self):
@@ -115,11 +116,10 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
 
         self.assertIn("elegant crypto finance funds allocator", full_body_prompt)
         self.assertIn("long trousers", full_body_prompt)
-        self.assertIn("not a mini skirt", full_body_prompt)
-        self.assertIn("no props", full_body_prompt)
-        self.assertIn("grey V-neck inner top", full_body_prompt)
-        self.assertIn("single silver button", full_body_prompt)
+        self.assertIn("must not add props", full_body_prompt)
+        self.assertIn("exactly one character", full_body_prompt)
         self.assertIn("mini skirt", library.negative_prompt)
+        self.assertIn("not replace her long trousers with a mini skirt", library.negative_prompt)
         self.assertIn("tablet", library.negative_prompt)
         self.assertIn("new accessories", library.negative_prompt)
 
@@ -374,6 +374,43 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
 
             self.assertNotEqual(0, raised.exception.code)
 
+    def test_sharpen_image_preserves_alpha_and_changes_rgb(self):
+        image = Image.new("RGBA", (8, 8), (240, 240, 240, 255))
+        image.putpixel((4, 4), (20, 40, 60, 255))
+        sharpened = sharpen_image(image)
+        self.assertEqual(255, sharpened.getpixel((4, 4))[3])
+        self.assertNotEqual(image.getpixel((4, 4))[:3], sharpened.getpixel((4, 4))[:3])
+
+    def test_sharpen_cli_writes_default_sibling_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source_dir = Path(tmp) / "raw"
+            source_dir.mkdir()
+            Image.new("RGB", (4, 4), (200, 200, 200)).save(source_dir / "sample.png")
+
+            with redirect_stdout(StringIO()):
+                exit_code = main(["sharpen", "--input-dir", str(source_dir)])
+
+            self.assertEqual(0, exit_code)
+            self.assertTrue((Path(tmp) / "raw-sharpened" / "sample.png").exists())
+
+    def test_strip_near_white_remnants_removes_enclosed_white(self):
+        image = Image.new("RGBA", (6, 6), (0, 0, 0, 0))
+        for x in range(6):
+            image.putpixel((x, 0), (20, 30, 40, 255))
+            image.putpixel((x, 5), (20, 30, 40, 255))
+        for y in range(6):
+            image.putpixel((0, y), (20, 30, 40, 255))
+            image.putpixel((5, y), (20, 30, 40, 255))
+        image.putpixel((3, 3), (255, 255, 255, 255))
+        image.putpixel((2, 2), (250, 249, 248, 200))
+        image.putpixel((1, 1), (180, 120, 90, 255))
+
+        _strip_near_white_remnants(image, threshold=242)
+
+        self.assertEqual(0, image.getpixel((3, 3))[3])
+        self.assertEqual(0, image.getpixel((2, 2))[3])
+        self.assertGreater(image.getpixel((1, 1))[3], 0)
+
     def test_remove_backgrounds_converts_jpg_to_transparent_png(self):
         with tempfile.TemporaryDirectory() as tmp:
             source_dir = Path(tmp) / "jpgs"
@@ -386,7 +423,13 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
                     image.putpixel((x, y), (10, 20, 30))
             image.save(jpg_path, quality=95)
 
-            summary = remove_backgrounds(source_dir, output_dir, tolerance=30)
+            summary = remove_backgrounds(
+                source_dir,
+                output_dir,
+                method="flood",
+                tolerance=30,
+                pre_sharpen=False,
+            )
             output_path = output_dir / "front__portrait.png"
             result = Image.open(output_path).convert("RGBA")
 
@@ -402,7 +445,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             Image.new("RGB", (3, 3), "white").save(source_dir / "empty.jpg")
 
             with redirect_stdout(StringIO()):
-                exit_code = main(["remove-background", "--input-dir", str(source_dir)])
+                exit_code = main(["remove-background", "--input-dir", str(source_dir), "--method", "flood"])
 
             self.assertEqual(0, exit_code)
             self.assertTrue((Path(tmp) / "jpgs-transparent" / "empty.png").exists())
@@ -413,7 +456,10 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source_dir.mkdir()
             Image.new("RGB", (3, 3), "white").save(source_dir / "empty.jpg")
 
-            with patch("sys.argv", ["avatar_reference_generator", "remove-background", "--input-dir", str(source_dir)]):
+            with patch(
+                "sys.argv",
+                ["avatar_reference_generator", "remove-background", "--input-dir", str(source_dir), "--method", "flood"],
+            ):
                 with redirect_stdout(StringIO()):
                     exit_code = main()
 
