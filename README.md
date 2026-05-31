@@ -26,7 +26,7 @@ The default batch is **21 images**: 8 angles × portrait / half-body / full-body
 ## Setup
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/messyvirgo-coin/messyvirgo-avatar-creator.git
 cd messyvirgo-avatar-creator
 
 python3 -m venv .venv
