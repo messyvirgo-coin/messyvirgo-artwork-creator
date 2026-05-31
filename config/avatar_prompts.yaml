@@ -1,0 +1,55 @@
+base_prompt: >
+  Use the provided transparent PNG anime avatar as the strict character
+  reference. Preserve the same identity, face shape, facial expression language,
+  hairstyle, hair color, eye color, outfit, accessories, body proportions,
+  silhouette, line art style, shading style, and color palette. Recreate the
+  character cleanly for the requested camera view and framing. The result should
+  be a clean production reference image of the same character, not a redesign.
+  Messy is an elegant crypto finance funds allocator with polished, composed
+  presence, but this role must not change her outfit or accessories. Preserve
+  the exact visible outfit from the source avatar: black sleeveless blazer-style
+  vest, black detached sleeve / cold-shoulder styling, grey V-neck inner top,
+  single silver button, long dark wavy hair, blue eyes, and no added props.
+  For views where the lower body must be inferred, use elegant tailored black
+  long trousers matching the blazer.
+
+negative_prompt: >
+  Do not redesign the character. Do not change clothing, colors, apparent age,
+  body proportions, hairstyle, facial features, species traits, accessories, or
+  art style. Avoid extra limbs, missing limbs, distorted hands, asymmetrical
+  eyes, changed outfit details, unrelated props, text, watermark, logo, busy
+  background, cropped full-body shots, mini skirt, very short skirt, or
+  revealing clubwear. Do not add papers, documents, clipboard, tablet, phone,
+  laptop, jewelry, handbag, tie, glasses, or new accessories. Do not replace her
+  long trousers with a mini skirt.
+
+composition: >
+  Use a plain transparent or simple neutral background if transparency is not
+  supported by the model. Keep the character centered, fully visible for the
+  requested framing, and suitable as a reusable reference image.
+
+angles:
+  front:
+    prompt: "front view, character facing the camera directly, symmetrical reference pose"
+  front_45_left:
+    prompt: "three-quarter front view, character turned 45 degrees to their left, face and outfit still clearly visible"
+  front_45_right:
+    prompt: "three-quarter front view, character turned 45 degrees to their right, face and outfit still clearly visible"
+  left_side:
+    prompt: "clean left side profile view, true side-facing character reference"
+  right_side:
+    prompt: "clean right side profile view, true side-facing character reference"
+  back_45_left:
+    prompt: "three-quarter rear view, character turned 45 degrees to their left, back details visible"
+  back_45_right:
+    prompt: "three-quarter rear view, character turned 45 degrees to their right, back details visible"
+  back:
+    prompt: "back view, rear-facing character reference, outfit and hair visible from behind"
+
+shots:
+  portrait:
+    prompt: "portrait close-up from head to upper shoulders, centered composition, face details clear, exact same black blazer vest and grey V-neck inner top visible, no props"
+  half_body:
+    prompt: "half-body reference from head to hips, centered composition, hands visible only if naturally in frame, exact same black blazer vest, cold-shoulder sleeve styling, grey V-neck inner top, single silver button, no props"
+  full_body:
+    prompt: "full-body reference from head to feet, entire character visible with no cropping, exact same upper outfit, clearly wearing elegant tailored black long trousers matching the blazer, not a mini skirt, no props or accessories"
