@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -18,6 +19,16 @@ from .executor import run_generation
 from .openrouter import OpenRouterClient
 from .planner import create_generation_plan
 from .prompts import load_prompt_library
+from .scene_executor import (
+    DEFAULT_SCENE_OUTPUT_DIR,
+    DEFAULT_SCENE_PROMPT_LIBRARY,
+    SceneGenerationConfig,
+    create_scene_plan,
+    run_scene_generation,
+    scene_plan_to_dict,
+)
+from .scene_prompts import load_scene_prompt_library
+from .web import DEFAULT_WEB_HOST, DEFAULT_WEB_PORT, start_web_server
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -107,6 +118,29 @@ def build_sharpen_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_scene_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Generate one compliant Messy scene image with OpenRouter.")
+    parser.add_argument("source_image", type=Path, help="Transparent PNG avatar source image.")
+    parser.add_argument("--setting", required=True, help="Where Messy is.")
+    parser.add_argument("--action", required=True, help="What Messy is doing.")
+    parser.add_argument("--output-dir", type=Path, default=DEFAULT_SCENE_OUTPUT_DIR)
+    parser.add_argument("--prompt-library", type=Path, default=DEFAULT_SCENE_PROMPT_LIBRARY)
+    parser.add_argument("--model", default=default_model())
+    parser.add_argument("--api-key", default=None, help="OpenRouter API key. Defaults to OPENROUTER_API_KEY.")
+    parser.add_argument("--filename", default=None, help="Output filename stem. Defaults to a slug from setting and action.")
+    parser.add_argument("--dry-run", action="store_true", help="Print the scene plan without calling OpenRouter.")
+    parser.add_argument("--regenerate", action="store_true", help="Regenerate successful existing output.")
+    parser.add_argument("--retry-count", type=int, default=0, help="Retry failed provider requests this many times.")
+    return parser
+
+
+def build_web_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Start the local Messy generator web interface.")
+    parser.add_argument("--host", default=DEFAULT_WEB_HOST)
+    parser.add_argument("--port", type=int, default=DEFAULT_WEB_PORT)
+    return parser
+
+
 def _resolve_postprocess_paths(args: argparse.Namespace, *, output_suffix: str) -> tuple[Path, Path]:
     provided_sources = [source for source in (args.source, args.input_dir, args.input_file) if source is not None]
     if len(provided_sources) != 1:
@@ -141,6 +175,46 @@ def _sharpen_settings_from_args(args: argparse.Namespace) -> SharpenSettings:
 def main(argv: list[str] | None = None) -> int:
     load_env_file()
     raw_args = list(sys.argv[1:] if argv is None else argv)
+    if raw_args and raw_args[0] == "scene":
+        args = build_scene_parser().parse_args(raw_args[1:])
+        if args.retry_count < 0:
+            raise SystemExit("--retry-count must be zero or greater")
+
+        config = SceneGenerationConfig(
+            source_image=args.source_image,
+            setting=args.setting,
+            action=args.action,
+            output_dir=args.output_dir,
+            prompt_library=args.prompt_library,
+            model=args.model,
+            api_key=args.api_key,
+            filename=args.filename,
+            regenerate=args.regenerate,
+            retry_count=args.retry_count,
+        )
+        library = load_scene_prompt_library(config.prompt_library)
+        plan = create_scene_plan(config, library)
+
+        if args.dry_run:
+            print(json.dumps(scene_plan_to_dict(plan), indent=2))
+            return 0
+
+        api_key = config.api_key or os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise SystemExit("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or pass --api-key.")
+
+        client = OpenRouterClient(api_key=api_key)
+        summary = run_scene_generation(config, library, client, progress=lambda message: print(message, file=sys.stderr))
+        print(json.dumps(summary.__dict__, indent=2))
+        return 1 if summary.failed else 0
+
+    if raw_args and raw_args[0] == "web":
+        args = build_web_parser().parse_args(raw_args[1:])
+        if args.port < 1 or args.port > 65535:
+            raise SystemExit("--port must be between 1 and 65535")
+        start_web_server(host=args.host, port=args.port)
+        return 0
+
     if raw_args and raw_args[0] == "remove-background":
         args = build_background_parser().parse_args(raw_args[1:])
         if args.tolerance < 0:

@@ -40,6 +40,8 @@ class OpenRouterClient:
         source_image_bytes: bytes,
         source_mime_type: str = "image/png",
     ) -> dict[str, Any]:
+        if not source_image_bytes:
+            raise ValueError("Reference image bytes are empty; cannot call OpenRouter without an input image")
         encoded_image = base64.b64encode(source_image_bytes).decode("ascii")
         full_prompt = prompt
         if negative_prompt.strip():
@@ -52,13 +54,13 @@ class OpenRouterClient:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": full_prompt},
                         {
                             "type": "image_url",
                             "image_url": {
                                 "url": f"data:{source_mime_type};base64,{encoded_image}",
                             },
                         },
+                        {"type": "text", "text": full_prompt},
                     ],
                 }
             ],
@@ -105,6 +107,60 @@ class OpenRouterClient:
             **_decode_data_url(data_url),
             "response_id": response_data.get("id"),
             "raw": response_data,
+        }
+
+    @staticmethod
+    def describe_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        """Summarize a request payload without embedding base64 image data."""
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            return {
+                "modalities": payload.get("modalities"),
+                "model": payload.get("model"),
+                "reference_image_attached": False,
+            }
+
+        content = messages[0].get("content") if isinstance(messages[0], dict) else None
+        if not isinstance(content, list):
+            return {
+                "modalities": payload.get("modalities"),
+                "model": payload.get("model"),
+                "reference_image_attached": False,
+            }
+
+        content_types: list[str] = []
+        reference_image_byte_size = 0
+        reference_image_mime_type: str | None = None
+        text_char_count = 0
+
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            part_type = part.get("type")
+            if isinstance(part_type, str):
+                content_types.append(part_type)
+            if part_type == "image_url":
+                image_url = part.get("image_url")
+                if isinstance(image_url, dict):
+                    url = image_url.get("url")
+                    if isinstance(url, str) and url.startswith("data:") and ";base64," in url:
+                        header, _, encoded = url.partition(",")
+                        reference_image_mime_type = header.removeprefix("data:").split(";", 1)[0]
+                        try:
+                            reference_image_byte_size = len(base64.b64decode(encoded, validate=True))
+                        except ValueError:
+                            reference_image_byte_size = len(encoded)
+            if part_type == "text" and isinstance(part.get("text"), str):
+                text_char_count += len(part["text"])
+
+        return {
+            "model": payload.get("model"),
+            "modalities": payload.get("modalities"),
+            "message_content_types": content_types,
+            "reference_image_attached": reference_image_byte_size > 0,
+            "reference_image_byte_size": reference_image_byte_size,
+            "reference_image_mime_type": reference_image_mime_type,
+            "prompt_text_char_count": text_char_count,
         }
 
 

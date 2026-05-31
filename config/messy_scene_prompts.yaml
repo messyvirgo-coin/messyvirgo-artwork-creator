@@ -1,0 +1,17 @@
+system_prompt: >
+  Recreate the woman in the attached PNG reference once in this scene—same face,
+  hair, eyes, outfit, and anime style. One character only.
+
+  Setting: {setting}
+  Action: {action}
+
+  Messy stays anime in focus; background partly photorealistic, softly blended.
+  Dark poppy-punk mood, subtle blue, pink, and violet neon, soft amber highlights.
+
+  Sparse OHLC charts on screens or signage only if fitting (green up, red down).
+  Never wax candles or charts on clothing. No HUD, watermarks, or logos.
+
+negative_prompt: >
+  Second person, twins, clone, crowd, redesign, changed face, hair, eyes, outfit,
+  or art style. Man, gender swap, generic anime woman. Wax candles. Charts on
+  clothing or floating. HUD, watermarks, logos. Extra or missing limbs, bad hands.

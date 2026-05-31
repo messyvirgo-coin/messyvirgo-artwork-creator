@@ -2,6 +2,8 @@
 
 Generate a consistent multi-angle anime avatar reference set from one transparent PNG, using [OpenRouter](https://openrouter.ai/) image models (default: **Seedream 4.5**). Post-process with optional sharpening and AI background removal for transparent PNGs suitable for LoRA training or downstream image workflows.
 
+It can also generate one full Messy scene image from the same avatar reference by providing only where Messy is and what she is doing. Scene prompts are composed from the local Messy brand prompt library and the source avatar is sent as the visual identity reference.
+
 ## What it does
 
 1. **Generate** — Sends your source avatar plus composed prompts (angle + shot) to OpenRouter and saves PNGs with JSON metadata.
@@ -76,6 +78,24 @@ python3 -m avatar_reference_generator input/messy.png \
   --output-dir output/my-reference-set
 ```
 
+**One full scene image:**
+
+```bash
+python3 -m avatar_reference_generator scene input/messy.png \
+  --setting "a glass-walled high-rise office overlooking Zurich at sunset" \
+  --action "reviewing a risk dashboard on a slim tablet" \
+  --output-dir output/messy-scenes
+```
+
+Preview the composed scene prompt first:
+
+```bash
+python3 -m avatar_reference_generator scene input/messy.png \
+  --setting "a neon city avenue after rain" \
+  --action "walking past a trading billboard with calm confidence" \
+  --dry-run
+```
+
 **Transparent backgrounds (recommended pipeline):**
 
 ```bash
@@ -138,6 +158,29 @@ python3 -m avatar_reference_generator sharpen --input-dir <dir> [--output-dir <d
 
 Default output: `<input-dir>-sharpened`.
 
+### Scene generation: `scene`
+
+```bash
+python3 -m avatar_reference_generator scene <source.png> \
+  --setting "<where Messy is>" \
+  --action "<what Messy is doing>" \
+  [--output-dir output/messy-scenes] \
+  [--filename custom-stem] \
+  [--dry-run]
+```
+
+Scene generation creates exactly one full image using `config/messy_scene_prompts.yaml`. It preserves the avatar reference, enforces the Messy brand guidance from the reference prompts, and writes `<stem>.png` plus `<stem>.json` metadata. Existing successful outputs with matching source hash, model, prompt, setting, and action are skipped unless `--regenerate` is passed.
+
+Scene images are complete environment illustrations, so background removal is not part of the default scene pipeline.
+
+### Local web interface
+
+```bash
+python3 -m avatar_reference_generator web
+```
+
+Open the printed local URL to use a simple browser UI for scene dry-runs/generation, reference-set dry-runs/generation, and background removal. Defaults bind to `127.0.0.1:8765`; use `--host` and `--port` to override.
+
 ## Project layout
 
 ```text
@@ -146,12 +189,16 @@ messyvirgo-avatar-creator/
 │   ├── cli.py
 │   ├── openrouter.py             # OpenRouter chat/completions + image modality
 │   ├── prompts.py                # YAML prompt composition
+│   ├── scene_prompts.py          # Messy scene prompt composition
+│   ├── scene_executor.py         # One-image scene generation
+│   ├── web.py                    # Local browser interface
 │   ├── planner.py / presets.py   # 21-image default matrix
 │   ├── executor.py               # Batch run, resume, metadata
 │   ├── sharpen.py
 │   └── background.py             # rembg + flood-fill + white cleanup
 ├── config/
-│   └── avatar_prompts.yaml       # Base, negative, angle, shot prompts
+│   ├── avatar_prompts.yaml       # Base, negative, angle, shot prompts
+│   └── messy_scene_prompts.yaml  # Messy scene prompt guidance
 ├── docs/
 │   └── avatar-reference-runbook.md
 ├── input/                        # Your source avatars (not tracked)
@@ -172,6 +219,8 @@ Edit `config/avatar_prompts.yaml` to tune:
 Each planned image uses: base + angle + shot + composition. Composed text is stored in per-image JSON metadata.
 
 **Note:** Seedream does not return true transparent PNGs from the API; prompts request a plain white background so matting works reliably. Native transparency is not available on this model path.
+
+Scene prompts live in `config/messy_scene_prompts.yaml`. Edit that file to tune the global Messy brand/system prompt and negative prompt used by the `scene` command. The user-provided `--setting` and `--action` values are inserted into bounded sections of that prompt.
 
 ## Resume and single-image regeneration
 

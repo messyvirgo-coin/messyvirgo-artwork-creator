@@ -38,6 +38,8 @@ The CLI loads `.env` from the current working directory. Values already exported
 
 Default prompt library: `config/avatar_prompts.yaml` — edit base, negative, composition, angle, and shot sections to tune generation.
 
+Scene prompt library: `config/messy_scene_prompts.yaml` — lean prompt tuned for `bytedance-seed/seedream-4.5` (default). Other image models (e.g. Gemini) often drift identity; set `AVATAR_REFERENCE_MODEL=bytedance-seed/seedream-4.5` or omit `--model`. Keep `--setting` / `--action` to place and pose only.
+
 ## End-to-end workflow (recommended)
 
 ```text
@@ -172,6 +174,70 @@ python3 -m avatar_reference_generator input/messy.png \
   --preset back:full_body
 ```
 
+## Full scene image generation
+
+Use `scene` when you already have a transparent Messy avatar reference and want one complete brand image. Provide only where Messy is and what she is doing; the command composes the full compliant prompt from `config/messy_scene_prompts.yaml`.
+
+**Preview prompt and output paths without an API call:**
+
+```bash
+python3 -m avatar_reference_generator scene input/messy.png \
+  --setting "a glass-walled high-rise office overlooking Zurich at sunset" \
+  --action "reviewing a risk dashboard on a slim tablet" \
+  --output-dir output/messy-scenes \
+  --dry-run
+```
+
+**Generate one scene:**
+
+```bash
+python3 -m avatar_reference_generator scene input/messy.png \
+  --setting "a neon city avenue after rain" \
+  --action "walking past a trading billboard with calm confidence" \
+  --output-dir output/messy-scenes \
+  --filename neon-city-walk
+```
+
+Each scene writes `<filename>.png` plus `<filename>.json` metadata containing the source hash, setting, action, full prompt, negative prompt, model, status, provider response id, and an `openrouter_request` summary that confirms the reference PNG was attached (byte size and MIME type, without embedding base64). If `--filename` is omitted, the tool derives a slug from the setting and action.
+
+**Verify the reference image is sent:** run with `--dry-run` and check `openrouter_request.reference_image_attached` is `true` and `message_content_types` is `["image_url", "text"]`. On generation, stderr prints `reference image attached: N bytes`.
+
+**Resume behavior:** Re-running the same scene command skips a successful output when metadata still matches source hash, model, setting, action, prompt, and negative prompt. Pass `--regenerate` to force replacement.
+
+**Prompting notes:**
+
+- Keep `--setting` concrete: "high-rise office at sunset", "rainy neon city avenue", "futuristic trading floor".
+- Keep `--action` to pose and handheld props: "reviewing a tablet", "waving a red-white fan scarf", "relaxing calmly".
+- Do not describe a new outfit in `--action` unless you accept identity drift; the reference PNG defines Messy's blazer look.
+- For financial charts, say they appear on a **screen or sign** in the setting—not on clothing or towels. Use words like "OHLC chart on a wall display", not "candle decorations" (models often draw wax candles).
+- After editing `config/messy_scene_prompts.yaml`, pass `--regenerate` so resume does not reuse an old prompt hash.
+- Do not include the full brand rules in user text; those live in `config/messy_scene_prompts.yaml`.
+- Scene images are complete environment illustrations, so do not run background removal on them unless you intentionally want to destroy the background.
+
+## Local web interface
+
+Start a local browser UI:
+
+```bash
+python3 -m avatar_reference_generator web
+```
+
+Default URL: `http://127.0.0.1:8765/`.
+
+Override host or port:
+
+```bash
+python3 -m avatar_reference_generator web --host 127.0.0.1 --port 8899
+```
+
+The web page exposes:
+
+- Scene image dry-run/generation.
+- Avatar reference-set dry-run/generation.
+- Background removal using the existing post-processing workflow.
+
+The web server is local-only by default and runs synchronously. Long OpenRouter or rembg calls will keep the browser request open until the operation finishes.
+
 ## Resume and regenerate
 
 **Resume:** Re-run the same command. Successful items with matching metadata are skipped; failed or missing items are retried.
@@ -227,6 +293,7 @@ openspec validate add-avatar-reference-set-generation
 | `Source avatar must be a transparent PNG file` | Use a `.png` file |
 | `Source PNG must include an alpha channel` | Export RGBA from your art tool |
 | `Missing angle/shot prompt fragment` | Add key to `config/avatar_prompts.yaml` |
+| `Scene setting must not be empty` / `Scene action must not be empty` | Fill both scene fields |
 | `No onnxruntime backend found` | `pip install "rembg[cpu]"` or `pip install -e ".[rembg]"` |
 | `Getting requirements to build editable` / multiple packages | Use current `pyproject.toml` (`packages.find` includes only `avatar_reference_generator`) |
 | Item skipped but you changed prompts | Delete PNG+JSON or use `--regenerate` |
@@ -239,6 +306,7 @@ openspec validate add-avatar-reference-set-generation
 output/
 ├── 2026-05-31-seedream/              # Raw generation (white bg)
 ├── 2026-05-31-seedream-transparent/  # Final transparent PNGs
+├── messy-scenes/                     # Full scene images
 └── test-avatar-reference/             # Smoke tests
 ```
 

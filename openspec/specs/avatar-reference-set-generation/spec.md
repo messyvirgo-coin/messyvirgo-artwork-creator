@@ -1,7 +1,8 @@
 # avatar-reference-set-generation Specification
 
 ## Purpose
-TBD - created by archiving change add-avatar-reference-set-generation. Update Purpose after archive.
+
+Generate a consistent multi-angle anime avatar reference set from one transparent PNG source avatar via OpenRouter (default Seedream 4.5), with optional sharpen and AI background removal for downstream workflows.
 ## Requirements
 ### Requirement: Source Avatar Validation
 The system SHALL accept a transparent PNG avatar as the source image and reject unsupported source files before starting generation.

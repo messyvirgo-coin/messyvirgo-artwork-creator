@@ -233,11 +233,24 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
         self.assertEqual("bytedance-seed/seedream-4.5", request["model"])
         self.assertEqual(["image"], request["modalities"])
         content = request["messages"][0]["content"]
-        self.assertEqual("text", content[0]["type"])
-        self.assertIn("base plus angle plus shot", content[0]["text"])
-        self.assertIn("avoid changes", content[0]["text"])
-        self.assertEqual("image_url", content[1]["type"])
-        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual("image_url", content[0]["type"])
+        self.assertTrue(content[0]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual("text", content[1]["type"])
+        self.assertIn("base plus angle plus shot", content[1]["text"])
+        self.assertIn("avoid changes", content[1]["text"])
+        summary = OpenRouterClient.describe_payload(request)
+        self.assertTrue(summary["reference_image_attached"])
+        self.assertEqual(["image_url", "text"], summary["message_content_types"])
+
+    def test_openrouter_rejects_empty_reference_image(self):
+        client = OpenRouterClient(api_key="test-key")
+        with self.assertRaisesRegex(ValueError, "empty"):
+            client.build_payload(
+                model="bytedance-seed/seedream-4.5",
+                prompt="test",
+                negative_prompt="",
+                source_image_bytes=b"",
+            )
 
     def test_openrouter_accepts_supported_non_png_image_response(self):
         client = OpenRouterClient(api_key="test-key")
