@@ -1,5 +1,9 @@
 # Messy Virgo Artwork Creator
 
+Python CLI (`mvac`) for Messy Virgo artwork via [OpenRouter](https://openrouter.ai/).
+
+**Repository:** [github.com/messyvirgo-coin/messyvirgo-artwork-creator](https://github.com/messyvirgo-coin/messyvirgo-artwork-creator)
+
 Create Messy Virgo artwork with AI. You can:
 
 1. **Avatar** — many angles of Messy from one transparent PNG (for reference sheets).
@@ -28,10 +32,18 @@ Images are generated online via [OpenRouter](https://openrouter.ai/) (you need a
 
 You need:
 
-1. **This project** on your computer (from git or a zip).
+1. **This project** on your computer:
+
+   ```bash
+   git clone https://github.com/messyvirgo-coin/messyvirgo-artwork-creator.git
+   cd messyvirgo-artwork-creator
+   ```
+
 2. **Python 3.11+** — [python.org](https://www.python.org/downloads/) (on Mac/Linux it is often pre-installed; try `python3 --version` in a terminal).
 3. **An OpenRouter account and API key** — sign up at [openrouter.ai](https://openrouter.ai/), add a little credit, then create an API key in their dashboard.
 4. **Input images** in the `input/` folder (create it if missing), e.g. `input/messy.png`.
+
+> **Note:** The GitHub repo was renamed from `messyvirgo-avatar-creator` to `messyvirgo-artwork-creator`. Old links redirect, but update your clone URL with `git remote set-url origin https://github.com/messyvirgo-coin/messyvirgo-artwork-creator.git` if needed.
 
 Put your Messy source as a **transparent PNG** (checkerboard in Photoshop/Figma = transparency) for avatar and scene.
 

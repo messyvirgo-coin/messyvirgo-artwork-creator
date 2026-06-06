@@ -82,7 +82,7 @@ class OpenRouterClient:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://local/mv-artwork-creator",
+                "HTTP-Referer": "https://github.com/messyvirgo-coin/messyvirgo-artwork-creator",
                 "X-Title": "Messy Virgo Artwork Creator",
             },
         )
