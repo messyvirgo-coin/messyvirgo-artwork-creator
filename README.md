@@ -1,250 +1,255 @@
-# messyvirgo-avatar-creator
+# Messy Virgo Artwork Creator
 
-Generate a consistent multi-angle anime avatar reference set from one transparent PNG, using [OpenRouter](https://openrouter.ai/) image models (default: **Seedream 4.5**). Post-process with optional sharpening and AI background removal for transparent PNGs suitable for LoRA training or downstream image workflows.
+Create Messy Virgo artwork with AI. You can:
 
-It can also generate one full Messy scene image from the same avatar reference by providing only where Messy is and what she is doing. Scene prompts are composed from the local Messy brand prompt library and the source avatar is sent as the visual identity reference.
+1. **Avatar** — many angles of Messy from one transparent PNG (for reference sheets).
+2. **Scene** — one full picture of Messy in a place, doing something.
+3. **Messy-fy** — repaint an existing photo or graphic in Messy brand style (Messy herself is **not** added — only the look).
 
-## What it does
+Images are generated online via [OpenRouter](https://openrouter.ai/) (you need an API key). Your computer only sends the request and saves the result.
 
-1. **Generate** — Sends your source avatar plus composed prompts (angle + shot) to OpenRouter and saves PNGs with JSON metadata.
-2. **Sharpen** (optional) — Mild unsharp mask before matting (on by default in `remove-background`).
-3. **Remove background** — `rembg` with the `isnet-anime` model, plus cleanup of leftover near-white pixels.
+---
 
-```text
-input/avatar.png  →  [OpenRouter / Seedream]  →  output/.../*.png + *.json
-                                                      ↓
-                                            sharpen → rembg → transparent PNGs
-```
+## Which tool should I use?
 
-The default batch is **21 images**: 8 angles × portrait / half-body / full-body (back views omit portrait). See [docs/avatar-reference-runbook.md](docs/avatar-reference-runbook.md) for the full matrix and operational detail.
+| I want to… | Command | What to prepare |
+|------------|---------|-----------------|
+| Many views of Messy (front, side, back, etc.) | `mvac avatar` | One **transparent** Messy PNG |
+| One picture of Messy in a scene | `mvac scene` | Transparent Messy PNG + short text for **where** and **what she’s doing** |
+| Restyle a photo or design in Messy colors/look | `mvac messy-fy` | Any PNG, JPEG, or WebP |
 
-## Requirements
+**Not sure about the command line?** After setup, run `mvac web` and use the forms in your browser (see [Browser UI](#browser-ui-easier-option)).
 
-- Python **3.11+**
-- [OpenRouter API key](https://openrouter.ai/) with access to image generation
-- A **transparent PNG** source avatar (RGBA)
-- For background removal: `rembg` with CPU support (see [Setup](#setup))
+**Transparent cutouts (optional):** Generated avatars come on a **white background**. Removing the background needs extra software on your PC and is slow on weak laptops — you can skip it unless you really need PNGs with no background ([Optional: transparent backgrounds](#optional-transparent-backgrounds)).
 
-## Setup
+---
+
+## Before you start
+
+You need:
+
+1. **This project** on your computer (from git or a zip).
+2. **Python 3.11+** — [python.org](https://www.python.org/downloads/) (on Mac/Linux it is often pre-installed; try `python3 --version` in a terminal).
+3. **An OpenRouter account and API key** — sign up at [openrouter.ai](https://openrouter.ai/), add a little credit, then create an API key in their dashboard.
+4. **Input images** in the `input/` folder (create it if missing), e.g. `input/messy.png`.
+
+Put your Messy source as a **transparent PNG** (checkerboard in Photoshop/Figma = transparency) for avatar and scene.
+
+---
+
+## First-time setup (do once)
+
+Open a terminal in the project folder, then:
+
+**Step 1 — Install the tool**
 
 ```bash
-git clone https://github.com/messyvirgo-coin/messyvirgo-avatar-creator.git
-cd messyvirgo-avatar-creator
-
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-
-# Core + AI background removal (onnxruntime via rembg[cpu])
-pip install -e ".[rembg]"
+source .venv/bin/activate
+pip install -e .
 ```
 
-Copy and edit environment variables:
+On **Windows** (Command Prompt or PowerShell in the project folder):
+
+```text
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+
+After this, `mvac` should work. If `mvac` is not found, try `python3 -m mv_artwork_creator` instead of `mvac` in the commands below.
+
+**Step 2 — Add your API key**
 
 ```bash
 cp .env.example .env
 ```
 
-| Variable | Purpose |
-|----------|---------|
-| `OPENROUTER_API_KEY` | API key (required for generation) |
-| `AVATAR_REFERENCE_MODEL` | OpenRouter model id (default: `bytedance-seed/seedream-4.5`) |
-| `AVATAR_REFERENCE_PROMPTS` | Path to prompt YAML (default: `config/avatar_prompts.yaml`) |
-| `AVATAR_REFERENCE_OUTPUT` | Default output directory for generation |
+Open `.env` in any text editor and replace the placeholder with your real key:
 
-Shell exports override `.env` values. The CLI loads `.env` from the current working directory.
-
-Place your source avatar at e.g. `input/messy.png` (must be PNG with alpha).
-
-## Quick start
-
-**Preview the plan (no API calls):**
-
-```bash
-python3 -m avatar_reference_generator input/messy.png --dry-run
+```text
+OPENROUTER_API_KEY=sk-or-v1-your-key-here
 ```
 
-**One test image:**
+Save the file. Keep this key private (do not share or commit it).
+
+**Step 3 — Check that it works (no charge for a dry run)**
 
 ```bash
-python3 -m avatar_reference_generator input/messy.png \
-  --test \
-  --output-dir output/test-run
+mvac avatar input/messy.png --dry-run
 ```
 
-**Full reference set:**
+You should see a plan (how many images, which angles) and **no** images generated yet. If you see an error about a missing API key, fix `.env`.
+
+The first time you run `mvac avatar`, `mvac scene`, or `mvac messy-fy` (even with `--dry-run`), the tool creates a **`config/`** folder with copies of the default prompt and model files. **Edit those files** to customize behavior — they are yours and are not tracked by git.
+
+---
+
+## Customizing prompts and models
+
+| What | Where to edit |
+|------|----------------|
+| Avatar angles, shots, style text | `config/avatar_prompts.yaml` |
+| Scene brand rules | `config/scene_prompts.yaml` |
+| Messy-fy repaint rules | `config/messy_fy_prompts.yaml` |
+| Default AI models per command | `config/models.yaml` |
+
+The `config/` folder appears automatically the first time you run a generator. Factory defaults stay inside the installed package; you normally **never** edit those.
+
+**Useful commands:**
 
 ```bash
-python3 -m avatar_reference_generator input/messy.png \
-  --output-dir output/my-reference-set
+mvac config path    # show where config/ lives
+mvac config init    # copy any missing default files into config/
+mvac config reset   # restore all config/ files from factory defaults
 ```
 
-**One full scene image:**
+To run once with factory defaults without touching `config/`, add `--factory-defaults` to `avatar`, `scene`, or `messy-fy`.
+
+---
+
+## How to generate images
+
+Always run commands from the project folder with the virtual environment active (`source .venv/bin/activate`).
+
+Results are saved under `output/` (created automatically).
+
+### Avatar — 21 reference images
 
 ```bash
-python3 -m avatar_reference_generator scene input/messy.png \
-  --setting "a glass-walled high-rise office overlooking Zurich at sunset" \
-  --action "reviewing a risk dashboard on a slim tablet" \
-  --output-dir output/messy-scenes
+# 1) Preview the plan (safe, no API images yet)
+mvac avatar input/messy.png --dry-run
+
+# 2) Try ONE image first
+mvac avatar input/messy.png --test --output-dir output/test-avatars
+
+# 3) Full set (takes a while — 21 images)
+mvac avatar input/messy.png --output-dir output/avatars
 ```
 
-Preview the composed scene prompt first:
+Files look like `output/avatars/front__portrait.png`, `right_side__full_body.png`, etc.
+
+### Scene — one environment image
+
+Describe **where** Messy is and **what she is doing** (not a new outfit — that comes from your PNG):
 
 ```bash
-python3 -m avatar_reference_generator scene input/messy.png \
+mvac scene input/messy.png \
   --setting "a neon city avenue after rain" \
   --action "walking past a trading billboard with calm confidence" \
   --dry-run
+
+mvac scene input/messy.png \
+  --setting "a neon city avenue after rain" \
+  --action "walking past a trading billboard" \
+  --filename neon-city-walk
 ```
 
-**Transparent backgrounds (recommended pipeline):**
+Output: `output/scenes/neon-city-walk.png` (or similar).
+
+**Tips:** Be concrete (“office at sunset”, not “nice place”). For charts on screens, say “chart on a wall display”, not “candles” (the AI may draw wax candles).
+
+### Messy-fy — restyle an existing image
 
 ```bash
-python3 -m avatar_reference_generator remove-background \
-  --input-dir output/my-reference-set \
-  --output-dir output/my-reference-set-transparent \
-  --white-threshold 235 \
-  --overwrite
+mvac messy-fy input/photo.jpg --hint "do not change any text" --dry-run
+
+mvac messy-fy input/photo.jpg --hint "do not change any text" --filename styled
 ```
 
-This runs **sharpen → rembg (`isnet-anime`) → near-white cleanup** on each file. First `rembg` run downloads the ONNX model (~tens of MB).
+Output: `output/messyfied/styled.png`.
 
-## CLI overview
+---
 
-### Generation
+## Browser UI (easier option)
+
+If you prefer forms instead of typing commands:
 
 ```bash
-python3 -m avatar_reference_generator <source.png> [options]
+mvac web
 ```
 
-| Option | Description |
-|--------|-------------|
-| `--output-dir` | Where to write PNGs and metadata |
-| `--model` | OpenRouter model id |
-| `--prompt-library` | YAML prompt file |
-| `--preset angle:shot` | Repeatable; limit to specific views |
-| `--test` | Generate exactly one image |
-| `--test-preset angle:shot` | Preset for test mode (default: `front:portrait`) |
-| `--dry-run` | Print plan JSON only |
-| `--regenerate` | Replace existing successful outputs |
-| `--stop-on-error` | Stop batch on first failure |
-| `--api-key` | Override `OPENROUTER_API_KEY` |
+Open the address shown in the terminal (usually [http://127.0.0.1:8765/](http://127.0.0.1:8765/)). Fill in paths (e.g. `input/messy.png`), settings, and use **Dry run** first.
 
-Preset format: `angle_id:shot_id` (e.g. `front_45_left:half_body`). Angle and shot ids are defined in `config/avatar_prompts.yaml` and `avatar_reference_generator/presets.py`.
+The page stays busy until generation finishes — do not close the browser tab during a long run.
 
-### Post-processing: `remove-background`
+---
+
+## Optional: transparent backgrounds
+
+**You can stop after avatar generation** and keep white-background PNGs. Most users do not need this step.
+
+Only continue if you need images **without** a white background **and** your computer is reasonably fast. This step runs **on your machine** (not OpenRouter) and can be slow for 21 images.
+
+**Extra install (once):**
 
 ```bash
-python3 -m avatar_reference_generator remove-background \
-  --input-dir <dir>   # or --input-file <file>
-  [--output-dir <dir>]
-  [--method rembg|flood]   # default: rembg
-  [--model isnet-anime]    # rembg model
-  [--white-threshold 242]  # lower = more aggressive white cleanup
-  [--no-pre-sharpen]       # sharpen is on by default
-  [--sharpen-radius 2] [--sharpen-percent 130] [--sharpen-threshold 3]
-  [--alpha-matting]        # optional; slower, noisy logs
-  [--overwrite]
+pip install -e ".[rembg]"
 ```
 
-Default output directory: `<input-dir>-transparent` (sibling name).
-
-### Post-processing: `sharpen`
-
-Standalone sharpen step (optional if you use `remove-background` without `--no-pre-sharpen`):
+**Then:**
 
 ```bash
-python3 -m avatar_reference_generator sharpen --input-dir <dir> [--output-dir <dir>]
+mvac remove-background --input-dir output/avatars \
+  --output-dir output/avatars-transparent --overwrite
 ```
 
-Default output: `<input-dir>-sharpened`.
+On a weak PC, skip `rembg` or ask someone technical for help. Do **not** use background removal on full **scene** images unless you want to delete the environment.
 
-### Scene generation: `scene`
+---
+
+## If something goes wrong
+
+| What you see | What to do |
+|--------------|------------|
+| Missing API key / credential | Check `.env` has `OPENROUTER_API_KEY=...` and you saved the file |
+| Must be a transparent PNG | Export Messy as PNG **with** transparency (RGBA) |
+| Scene setting/action empty | Fill both `--setting` and `--action` |
+| Command `mvac` not found | Activate the venv (`source .venv/bin/activate`) or use `python3 -m mv_artwork_creator` |
+| Generation skipped an image | Normal if you run the same command again; add `--regenerate` to force redo |
+| `No onnxruntime` (background removal) | Run `pip install -e ".[rembg]"` or skip background removal |
+
+---
+
+## Re-running and fixing one image
+
+- **Run the same command again** — already-finished images are skipped.
+- **Redo everything** — add `--regenerate` to the command.
+- **Redo one avatar angle** — delete that image’s `.png` and `.json` in the output folder, then run again with `--preset angle:shot` (e.g. `--preset right_side:full_body`).
+
+---
+
+## For technical users
+
+<details>
+<summary>Install with pipx, models, CLI flags, prompt files, tests</summary>
+
+**pipx (global `mvac` without venv):**
 
 ```bash
-python3 -m avatar_reference_generator scene <source.png> \
-  --setting "<where Messy is>" \
-  --action "<what Messy is doing>" \
-  [--output-dir output/messy-scenes] \
-  [--filename custom-stem] \
-  [--dry-run]
+pipx install .
 ```
 
-Scene generation creates exactly one full image using `config/messy_scene_prompts.yaml`. It preserves the avatar reference, enforces the Messy brand guidance from the reference prompts, and writes `<stem>.png` plus `<stem>.json` metadata. Existing successful outputs with matching source hash, model, prompt, setting, and action are skipped unless `--regenerate` is passed.
+**Default AI models** are set in `config/models.yaml` (copied on first run; aliases `seedream` and `nano-banana`). Override per run with `--model seedream`. You do not need model settings in `.env`.
 
-Scene images are complete environment illustrations, so background removal is not part of the default scene pipeline.
-
-### Local web interface
-
-```bash
-python3 -m avatar_reference_generator web
-```
-
-Open the printed local URL to use a simple browser UI for scene dry-runs/generation, reference-set dry-runs/generation, and background removal. Defaults bind to `127.0.0.1:8765`; use `--host` and `--port` to override.
-
-## Project layout
+**CLI overview:**
 
 ```text
-messyvirgo-avatar-creator/
-├── avatar_reference_generator/   # CLI and library
-│   ├── cli.py
-│   ├── openrouter.py             # OpenRouter chat/completions + image modality
-│   ├── prompts.py                # YAML prompt composition
-│   ├── scene_prompts.py          # Messy scene prompt composition
-│   ├── scene_executor.py         # One-image scene generation
-│   ├── web.py                    # Local browser interface
-│   ├── planner.py / presets.py   # 21-image default matrix
-│   ├── executor.py               # Batch run, resume, metadata
-│   ├── sharpen.py
-│   └── background.py             # rembg + flood-fill + white cleanup
-├── config/
-│   ├── avatar_prompts.yaml       # Base, negative, angle, shot prompts
-│   └── messy_scene_prompts.yaml  # Messy scene prompt guidance
-├── docs/
-│   └── avatar-reference-runbook.md
-├── input/                        # Your source avatars (not tracked)
-├── output/                       # Generated assets (gitignored)
-├── tests/
-├── .env.example
-└── pyproject.toml
+mvac avatar <source.png> [--dry-run] [--test] [--preset angle:shot] ...
+mvac scene <source.png> --setting "..." --action "..." [--filename stem] ...
+mvac messy-fy <image> [--hint "..."] [--remove-background] ...
+mvac remove-background [--input-dir DIR] [--method rembg|flood]
+mvac sharpen [--input-dir DIR]
+mvac config {init|reset|path}
+mvac web [--port 8899]
 ```
 
-## Prompts
+**Prompt libraries** (edit to tune style): YAML files in `config/` (see [Customizing prompts and models](#customizing-prompts-and-models)).
 
-Edit `config/avatar_prompts.yaml` to tune:
-
-- `base_prompt` / `negative_prompt` / `composition`
-- `angles.*` — camera yaw (front, 45°, profile, back, …)
-- `shots.*` — framing (portrait, half-body, full-body)
-
-Each planned image uses: base + angle + shot + composition. Composed text is stored in per-image JSON metadata.
-
-**Note:** Seedream does not return true transparent PNGs from the API; prompts request a plain white background so matting works reliably. Native transparency is not available on this model path.
-
-Scene prompts live in `config/messy_scene_prompts.yaml`. Edit that file to tune the global Messy brand/system prompt and negative prompt used by the `scene` command. The user-provided `--setting` and `--action` values are inserted into bounded sections of that prompt.
-
-## Resume and single-image regeneration
-
-Successful outputs are **skipped** when metadata matches the current source hash, model, and composed prompt. Delete both `name.png` and `name.json`, or pass `--regenerate`, to redo specific images:
-
-```bash
-python3 -m avatar_reference_generator input/messy.png \
-  --output-dir output/my-reference-set \
-  --preset right_side:full_body \
-  --regenerate
-```
-
-## Tests
+**Tests:**
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-No network calls in unit tests; OpenRouter and rembg are not invoked in the default suite.
-
-## Documentation
-
-- **[Avatar reference runbook](docs/avatar-reference-runbook.md)** — Step-by-step operations, troubleshooting, and recommended pipelines.
-
-## License
-
-Add your license here if the repository is published publicly.
+</details>

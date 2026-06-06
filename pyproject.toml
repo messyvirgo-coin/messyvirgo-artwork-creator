@@ -3,20 +3,23 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "messyvirgo-avatar-creator"
-version = "0.1.0"
-description = "Generate reusable anime avatar reference image sets with OpenRouter."
+name = "mv-artwork-creator"
+version = "0.2.0"
+description = "Messy Virgo Artwork Creator — avatar, scene, and messy-fy generation with OpenRouter."
 readme = "README.md"
 requires-python = ">=3.11"
-
-[project.urls]
-Homepage = "https://github.com/messyvirgo-coin/messyvirgo-avatar-creator"
-Repository = "https://github.com/messyvirgo-coin/messyvirgo-avatar-creator"
-Issues = "https://github.com/messyvirgo-coin/messyvirgo-avatar-creator/issues"
 dependencies = [
   "Pillow>=10.0",
   "PyYAML>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/messyvirgo-coin/messyvirgo-artwork-creator"
+Repository = "https://github.com/messyvirgo-coin/messyvirgo-artwork-creator"
+Issues = "https://github.com/messyvirgo-coin/messyvirgo-artwork-creator/issues"
+
+[project.scripts]
+mvac = "mv_artwork_creator.cli:main"
 
 [project.optional-dependencies]
 rembg = [
@@ -25,7 +28,10 @@ rembg = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["avatar_reference_generator*"]
+include = ["mv_artwork_creator*"]
+
+[tool.setuptools.package-data]
+mv_artwork_creator = ["resources/*.yaml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

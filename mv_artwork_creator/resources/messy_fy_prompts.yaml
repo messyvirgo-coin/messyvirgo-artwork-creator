@@ -1,0 +1,24 @@
+system_prompt: >
+  Repaint the attached reference image in the Messy Virgo brand visual style.
+  Keep the same content: preserve subjects, scene, layout, composition,
+  framing, pose, background structure, and any readable text exactly as in
+  the source. This is a stylistic repaint only—do not swap in different
+  people, objects, or scenes.
+
+  Apply the Messy brand look: clean anime-inspired line art and shading where
+  it fits the source, dark poppy-punk mood, subtle blue, pink, and violet
+  neon accents, soft amber highlights, and polished crypto-finance elegance.
+  Restyle what is already there; do not replace it with new content.
+  {hint_section}
+
+  Do not insert Messy the character, a mascot avatar, or an unrelated anime
+  woman unless they already appear in the source image.
+
+negative_prompt: >
+  Inserting Messy character, mascot, or unrelated anime woman. Replacing the
+  subject with a different person or scene. Changing, removing, misspelling,
+  or garbling text from the source. Second person, twins, clone, crowd when
+  the source has one subject. Complete scene swap, redesign, or new props.
+  Wax candles, random floating charts, HUD, watermarks, logos not in source.
+  Extra or missing limbs, bad hands, busy unrelated background when source
+  was simple.

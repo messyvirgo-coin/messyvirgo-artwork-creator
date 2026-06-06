@@ -1,20 +1,12 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Messy Virgo Artwork Creator — Python CLI package `mv_artwork_creator`, entry point `mvac`
+  (also `python3 -m mv_artwork_creator`). Generators: `avatar`, `scene`, `messy-fy`. Post-process:
+  `remove-background`, `sharpen`. Local UI: `web`. Documentation: README.md only (no runbook).
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Bundled YAML under `mv_artwork_creator/resources/`: `avatar_prompts.yaml`, `scene_prompts.yaml`,
+  `messy_fy_prompts.yaml`, `models.yaml`. Default models per task are defined in `models.yaml`
+  (aliases `seedream`, `nano-banana`); `.env` needs only `OPENROUTER_API_KEY` for normal use.
+
+  Optional `rembg` extra for local AI matting — CPU/RAM heavy; generators do not require it.

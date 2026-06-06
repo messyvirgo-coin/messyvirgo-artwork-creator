@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Generate one complete Messy brand scene image from a transparent source avatar, a user-provided setting, and a user-provided action. Prompts are composed from `config/messy_scene_prompts.yaml`; the source avatar is sent to OpenRouter as the visual identity reference. The default model is `bytedance-seed/seedream-4.5`, which preserves reference fidelity better than many alternate image models.
+Generate one complete Messy brand scene image from a transparent source avatar, a user-provided setting, and a user-provided action. Prompts are composed from `mv_artwork_creator/resources/scene_prompts.yaml`; the source avatar is sent to OpenRouter as the visual identity reference. Default model alias `seedream` is defined in `models.yaml`.
 
 ## Requirements
 
 ### Requirement: Scene Prompt Composition
 
-The system SHALL compose a complete Messy scene prompt from stable brand guidance in `config/messy_scene_prompts.yaml`, a user-provided setting, a user-provided action, and negative prompt constraints.
+The system SHALL compose a complete Messy scene prompt from stable brand guidance in `mv_artwork_creator/resources/scene_prompts.yaml`, a user-provided setting, a user-provided action, and negative prompt constraints.
 
 #### Scenario: Setting and action are included
 
@@ -41,13 +41,13 @@ The system SHALL generate one complete scene image through OpenRouter using the 
 
 #### Scenario: Configurable model is used
 
-- **WHEN** a user provides an OpenRouter model override
+- **WHEN** a user provides `--model` with an alias or full OpenRouter id
 - **THEN** the system uses that model for the scene request
 
-#### Scenario: Default model is Seedream 4.5
+#### Scenario: Default model from models.yaml
 
-- **WHEN** a user starts scene generation without overriding the model
-- **THEN** the system uses `bytedance-seed/seedream-4.5` (or `AVATAR_REFERENCE_MODEL` when set)
+- **WHEN** a user starts scene generation without `--model` and without `MVAC_SCENE_MODEL`
+- **THEN** the system uses the `scene` task default from `models.yaml` (alias `seedream` → `bytedance-seed/seedream-4.5`)
 
 #### Scenario: Missing credential is rejected
 
@@ -80,19 +80,14 @@ The system SHALL write generated scene images as PNG files and adjacent JSON met
 
 ### Requirement: Scene CLI
 
-The system SHALL provide a `scene` CLI subcommand for scene generation without changing existing commands.
+The system SHALL provide a `scene` subcommand on the `mvac` CLI for scene generation.
 
 #### Scenario: Dry run prints scene plan
 
-- **WHEN** a user runs the scene command with `--dry-run`
+- **WHEN** a user runs `mvac scene <source.png> --setting "..." --action "..." --dry-run`
 - **THEN** the CLI prints the resolved output path, model, setting, action, prompt, negative prompt, and `openrouter_request` summary without calling OpenRouter
 
 #### Scenario: Scene command generates image
 
 - **WHEN** a user runs the scene command with a valid source avatar, setting, action, and credential
 - **THEN** the CLI generates exactly one scene image and prints a JSON summary
-
-#### Scenario: Existing reference command still parses
-
-- **WHEN** a user runs the original positional source-avatar command
-- **THEN** the CLI continues to execute reference-set planning and generation behavior

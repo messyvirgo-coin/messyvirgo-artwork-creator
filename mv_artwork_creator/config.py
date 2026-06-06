@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+
+from .user_config import default_avatar_prompt_library
 
 
 DEFAULT_MODEL = "bytedance-seed/seedream-4.5"
-DEFAULT_PROMPT_LIBRARY = Path("config/avatar_prompts.yaml")
-DEFAULT_OUTPUT_DIR = Path("output/avatar-reference-set")
+DEFAULT_OUTPUT_DIR = Path("output/avatars")
 
 
 def load_env_file(path: Path = Path(".env"), *, override: bool = False) -> dict[str, str]:
@@ -42,22 +43,24 @@ def _parse_env_value(value: str) -> str:
 
 
 def default_model() -> str:
-    return os.environ.get("AVATAR_REFERENCE_MODEL", DEFAULT_MODEL)
+    from .models import GenerationTask, default_model_for_task
+
+    return default_model_for_task(GenerationTask.AVATAR)
 
 
-def default_prompt_library() -> Path:
-    return Path(os.environ.get("AVATAR_REFERENCE_PROMPTS", str(DEFAULT_PROMPT_LIBRARY)))
+def default_prompt_library(*, factory: bool = False) -> Path:
+    return default_avatar_prompt_library(factory=factory)
 
 
 def default_output_dir() -> Path:
-    return Path(os.environ.get("AVATAR_REFERENCE_OUTPUT", str(DEFAULT_OUTPUT_DIR)))
+    return Path(os.environ.get("MVAC_AVATAR_OUTPUT", str(DEFAULT_OUTPUT_DIR)))
 
 
 @dataclass(frozen=True)
 class GenerationConfig:
     source_image: Path
     output_dir: Path = DEFAULT_OUTPUT_DIR
-    prompt_library: Path = DEFAULT_PROMPT_LIBRARY
+    prompt_library: Path = field(default_factory=default_avatar_prompt_library)
     model: str = DEFAULT_MODEL
     api_key: str | None = None
     presets: list[str] | None = None

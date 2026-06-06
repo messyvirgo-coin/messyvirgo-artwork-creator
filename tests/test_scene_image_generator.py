@@ -11,18 +11,18 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from avatar_reference_generator.cli import main
-from avatar_reference_generator.scene_executor import (
+from mv_artwork_creator.cli import main
+from mv_artwork_creator.scene_executor import (
     SceneGenerationConfig,
     create_scene_plan,
     run_scene_generation,
     scene_plan_to_dict,
 )
-from avatar_reference_generator.scene_prompts import load_scene_prompt_library
-from avatar_reference_generator.web import (
+from mv_artwork_creator.scene_prompts import load_scene_prompt_library
+from mv_artwork_creator.web import (
     render_home_page,
-    run_reference_generation_from_form,
-    run_reference_dry_run_from_form,
+    run_avatar_generation_from_form,
+    run_avatar_dry_run_from_form,
     run_scene_dry_run_from_form,
 )
 
@@ -55,7 +55,7 @@ class FakeSceneClient:
 
 class SceneImageGeneratorTests(unittest.TestCase):
     def test_scene_prompt_library_composes_brand_prompt_from_setting_and_action(self):
-        library = load_scene_prompt_library(Path("config/messy_scene_prompts.yaml"))
+        library = load_scene_prompt_library(Path("mv_artwork_creator/resources/scene_prompts.yaml"))
 
         prompt = library.compose_prompt(
             setting="a glass-walled high-rise office overlooking Zurich at sunset",
@@ -75,7 +75,7 @@ class SceneImageGeneratorTests(unittest.TestCase):
         self.assertIn("gender swap", library.negative_prompt)
 
     def test_scene_prompt_rejects_empty_setting_or_action(self):
-        library = load_scene_prompt_library(Path("config/messy_scene_prompts.yaml"))
+        library = load_scene_prompt_library(Path("mv_artwork_creator/resources/scene_prompts.yaml"))
 
         with self.assertRaisesRegex(ValueError, "setting"):
             library.compose_prompt(setting="", action="checking charts")
@@ -87,14 +87,14 @@ class SceneImageGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "messy.png"
             output = Path(tmp) / "scenes"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_scene_prompt_library(Path("config/messy_scene_prompts.yaml"))
+            library = load_scene_prompt_library(Path("mv_artwork_creator/resources/scene_prompts.yaml"))
             config = SceneGenerationConfig(
                 source_image=source,
                 output_dir=output,
                 model="custom/scene-model",
                 setting="modern trading floor with glass walls",
                 action="calmly pointing at a nearby market screen",
-                prompt_library=Path("config/messy_scene_prompts.yaml"),
+                prompt_library=Path("mv_artwork_creator/resources/scene_prompts.yaml"),
                 filename="trading-floor",
             )
 
@@ -134,7 +134,7 @@ class SceneImageGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "messy.png"
             output = Path(tmp) / "scenes"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_scene_prompt_library(Path("config/messy_scene_prompts.yaml"))
+            library = load_scene_prompt_library(Path("mv_artwork_creator/resources/scene_prompts.yaml"))
             config = SceneGenerationConfig(
                 source_image=source,
                 output_dir=output,
@@ -160,7 +160,7 @@ class SceneImageGeneratorTests(unittest.TestCase):
                 setting="neon office",
                 action="reviewing a tablet",
             )
-            library = load_scene_prompt_library(Path("config/messy_scene_prompts.yaml"))
+            library = load_scene_prompt_library(Path("mv_artwork_creator/resources/scene_prompts.yaml"))
             plan = create_scene_plan(config, library)
             payload = scene_plan_to_dict(plan)
 
@@ -206,8 +206,8 @@ class SceneImageGeneratorTests(unittest.TestCase):
             stdout = StringIO()
             summary = SimpleNamespace(planned=1, generated=1, skipped=0, failed=0)
 
-            with patch("avatar_reference_generator.cli.OpenRouterClient") as client_class:
-                with patch("avatar_reference_generator.cli.run_scene_generation", return_value=summary) as run_scene:
+            with patch("mv_artwork_creator.cli.OpenRouterClient") as client_class:
+                with patch("mv_artwork_creator.cli.run_scene_generation", return_value=summary) as run_scene:
                     with redirect_stdout(stdout):
                         exit_code = main(
                             [
@@ -236,9 +236,9 @@ class SceneImageGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "messy.png"
             source.write_bytes(PNG_RGBA_1X1)
 
-            with patch("avatar_reference_generator.cli.load_env_file", return_value={}):
+            with patch("mv_artwork_creator.cli.load_env_file", return_value={}):
                 with patch.dict(os.environ, {}, clear=True):
-                    with patch("avatar_reference_generator.cli.OpenRouterClient") as client_class:
+                    with patch("mv_artwork_creator.cli.OpenRouterClient") as client_class:
                         with self.assertRaises(SystemExit) as raised:
                             main(
                                 [
@@ -256,20 +256,20 @@ class SceneImageGeneratorTests(unittest.TestCase):
             self.assertIn("Missing OpenRouter API credential", str(raised.exception))
             client_class.assert_not_called()
 
-    def test_original_reference_cli_still_supports_dry_run(self):
+    def test_avatar_cli_dry_run_prints_plan(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "messy.png"
             source.write_bytes(PNG_RGBA_1X1)
             stdout = StringIO()
 
             with redirect_stdout(stdout):
-                exit_code = main([str(source), "--dry-run"])
+                exit_code = main(["avatar", str(source), "--dry-run"])
 
             payload = json.loads(stdout.getvalue())
             self.assertEqual(0, exit_code)
             self.assertEqual(21, payload["planned_count"])
 
-    def test_web_helpers_render_scene_and_reference_dry_runs(self):
+    def test_web_helpers_render_scene_and_avatar_dry_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "messy.png"
             source.write_bytes(PNG_RGBA_1X1)
@@ -283,37 +283,37 @@ class SceneImageGeneratorTests(unittest.TestCase):
                     "output_dir": str(Path(tmp) / "scene-out"),
                 }
             )
-            reference = run_reference_dry_run_from_form(
+            avatar = run_avatar_dry_run_from_form(
                 {
                     "source_image": str(source),
-                    "output_dir": str(Path(tmp) / "reference-out"),
+                    "output_dir": str(Path(tmp) / "avatar-out"),
                 }
             )
 
-            self.assertIn("Messy Scene Generator", page)
+            self.assertIn("Messy Virgo Artwork Creator", page)
             self.assertEqual("scene-dry-run", scene["kind"])
             self.assertIn("neon city avenue", scene["prompt"])
-            self.assertEqual("reference-dry-run", reference["kind"])
-            self.assertEqual(21, reference["planned_count"])
+            self.assertEqual("avatar-dry-run", avatar["kind"])
+            self.assertEqual(21, avatar["planned_count"])
 
-    def test_web_reference_generation_uses_existing_workflow(self):
+    def test_web_avatar_generation_uses_existing_workflow(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "messy.png"
             source.write_bytes(PNG_RGBA_1X1)
 
-            with patch("avatar_reference_generator.web.run_generation") as run_generation:
+            with patch("mv_artwork_creator.web.run_generation") as run_generation:
                 run_generation.return_value = SimpleNamespace(planned=1, generated=1, skipped=0, failed=0)
 
-                result = run_reference_generation_from_form(
+                result = run_avatar_generation_from_form(
                     {
                         "source_image": str(source),
-                        "output_dir": str(Path(tmp) / "reference-out"),
+                        "output_dir": str(Path(tmp) / "avatar-out"),
                         "api_key": "test-key",
                         "test_mode": "1",
                     }
                 )
 
-            self.assertEqual("reference-generation", result["kind"])
+            self.assertEqual("avatar-generation", result["kind"])
             self.assertEqual(1, result["generated"])
             self.assertEqual(1, run_generation.call_args.args[0].test_mode)
 

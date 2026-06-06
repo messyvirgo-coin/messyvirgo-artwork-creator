@@ -9,20 +9,33 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from .background import remove_backgrounds
-from .config import GenerationConfig, default_model, default_prompt_library
+from .config import GenerationConfig, default_output_dir
 from .executor import run_generation
+from .messy_fy_executor import (
+    MessyFyGenerationConfig,
+    create_messy_fy_plan,
+    default_messy_fy_output_dir,
+    messy_fy_plan_to_dict,
+    run_messy_fy_generation,
+)
+from .messy_fy_prompts import load_messy_fy_prompt_library
+from .models import GenerationTask, default_model_for_task, resolve_model
 from .openrouter import OpenRouterClient
 from .planner import create_generation_plan
 from .prompts import load_prompt_library
 from .scene_executor import (
-    DEFAULT_SCENE_OUTPUT_DIR,
-    DEFAULT_SCENE_PROMPT_LIBRARY,
     SceneGenerationConfig,
     create_scene_plan,
+    default_scene_output_dir,
     run_scene_generation,
     scene_plan_to_dict,
 )
 from .scene_prompts import load_scene_prompt_library
+from .user_config import (
+    default_avatar_prompt_library,
+    default_messy_fy_prompt_library,
+    default_scene_prompt_library,
+)
 
 
 DEFAULT_WEB_HOST = "127.0.0.1"
@@ -44,7 +57,7 @@ def render_home_page(result: object | None = None, error: str | None = None) -> 
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Messy Scene Generator</title>
+  <title>Messy Virgo Artwork Creator</title>
   <style>
     :root {{
       color-scheme: dark;
@@ -74,27 +87,13 @@ def render_home_page(result: object | None = None, error: str | None = None) -> 
 </head>
 <body>
 <main>
-  <h1>Messy Scene Generator</h1>
+  <h1>Messy Virgo Artwork Creator</h1>
   <div class="grid">
-    <form method="post" action="/scene">
-      <h2>Scene Image</h2>
+    <form method="post" action="/avatar">
+      <h2>Avatar</h2>
       <label>Source avatar PNG<input name="source_image" required></label>
-      <label>Where Messy is<textarea name="setting" required></textarea></label>
-      <label>What Messy is doing<textarea name="action" required></textarea></label>
-      <label>Output directory<input name="output_dir" value="{html.escape(str(DEFAULT_SCENE_OUTPUT_DIR))}"></label>
-      <label>Model<input name="model" value="{html.escape(default_model())}"></label>
-      <label>Filename stem<input name="filename"></label>
-      <label>API key override<input name="api_key" type="password"></label>
-      <div class="row">
-        <label><input name="dry_run" type="checkbox" value="1" checked> Dry run</label>
-        <button type="submit">Run</button>
-      </div>
-    </form>
-    <form method="post" action="/reference">
-      <h2>Avatar Reference</h2>
-      <label>Source avatar PNG<input name="source_image" required></label>
-      <label>Output directory<input name="output_dir" value="output/avatar-reference-set"></label>
-      <label>Model<input name="model" value="{html.escape(default_model())}"></label>
+      <label>Output directory<input name="output_dir" value="{html.escape(str(default_output_dir()))}"></label>
+      <label>Model<input name="model" value="{html.escape(default_model_for_task(GenerationTask.AVATAR))}"></label>
       <label>API key override<input name="api_key" type="password"></label>
       <div class="row">
         <label><input name="dry_run" type="checkbox" value="1" checked> Dry run</label>
@@ -102,11 +101,42 @@ def render_home_page(result: object | None = None, error: str | None = None) -> 
         <button type="submit">Run</button>
       </div>
     </form>
+    <form method="post" action="/scene">
+      <h2>Scene</h2>
+      <label>Source avatar PNG<input name="source_image" required></label>
+      <label>Where Messy is<textarea name="setting" required></textarea></label>
+      <label>What Messy is doing<textarea name="action" required></textarea></label>
+      <label>Output directory<input name="output_dir" value="{html.escape(str(default_scene_output_dir()))}"></label>
+      <label>Model<input name="model" value="{html.escape(default_model_for_task(GenerationTask.SCENE))}"></label>
+      <label>Filename stem<input name="filename"></label>
+      <label>API key override<input name="api_key" type="password"></label>
+      <div class="row">
+        <label><input name="dry_run" type="checkbox" value="1" checked> Dry run</label>
+        <button type="submit">Run</button>
+      </div>
+    </form>
+    <form method="post" action="/messy-fy">
+      <h2>Messy-fy</h2>
+      <label>Source image<input name="source_image" required></label>
+      <label>Hint<textarea name="hint"></textarea></label>
+      <label>Output directory<input name="output_dir" value="{html.escape(str(default_messy_fy_output_dir()))}"></label>
+      <label>Model<input name="model" value="{html.escape(default_model_for_task(GenerationTask.MESSY_FY))}"></label>
+      <label>Filename stem<input name="filename"></label>
+      <label>API key override<input name="api_key" type="password"></label>
+      <div class="row">
+        <label><input name="dry_run" type="checkbox" value="1" checked> Dry run</label>
+        <label><input name="remove_background" type="checkbox" value="1"> Remove background</label>
+        <button type="submit">Run</button>
+      </div>
+    </form>
     <form method="post" action="/background">
       <h2>Remove Background</h2>
       <label>Input file or directory<input name="source" required></label>
       <label>Output directory<input name="output_dir"></label>
-      <label>Method<select name="method"><option value="rembg">rembg</option><option value="flood">flood</option></select></label>
+      <label>Method<select name="method">
+        <option value="rembg" selected>rembg (AI)</option>
+        <option value="flood">flood (fast)</option>
+      </select></label>
       <button type="submit">Convert</button>
     </form>
   </div>
@@ -118,7 +148,7 @@ def render_home_page(result: object | None = None, error: str | None = None) -> 
 
 def run_scene_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
     config = _scene_config_from_form(form)
-    library = load_scene_prompt_library(_path_value(form, "prompt_library", DEFAULT_SCENE_PROMPT_LIBRARY))
+    library = load_scene_prompt_library(_path_value(form, "prompt_library", default_scene_prompt_library()))
     plan = create_scene_plan(config, library)
     return {"kind": "scene-dry-run", **scene_plan_to_dict(plan)}
 
@@ -128,18 +158,18 @@ def run_scene_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
     api_key = _text_value(form, "api_key") or os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or provide an API key.")
-    library = load_scene_prompt_library(_path_value(form, "prompt_library", DEFAULT_SCENE_PROMPT_LIBRARY))
+    library = load_scene_prompt_library(_path_value(form, "prompt_library", default_scene_prompt_library()))
     client = OpenRouterClient(api_key=api_key)
     summary = run_scene_generation(config, library, client)
     return {"kind": "scene-generation", **summary.__dict__}
 
 
-def run_reference_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
-    config = _reference_config_from_form(form)
+def run_avatar_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
+    config = _avatar_config_from_form(form)
     library = load_prompt_library(config.prompt_library)
     plan = create_generation_plan(config, library)
     return {
-        "kind": "reference-dry-run",
+        "kind": "avatar-dry-run",
         "source_image": str(plan.source_image),
         "output_dir": str(plan.output_dir),
         "provider": plan.provider,
@@ -157,15 +187,33 @@ def run_reference_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
     }
 
 
-def run_reference_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
-    config = _reference_config_from_form(form)
+def run_avatar_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
+    config = _avatar_config_from_form(form)
     api_key = _text_value(form, "api_key") or os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or provide an API key.")
     library = load_prompt_library(config.prompt_library)
     client = OpenRouterClient(api_key=api_key)
     summary = run_generation(config, library, client)
-    return {"kind": "reference-generation", **summary.__dict__}
+    return {"kind": "avatar-generation", **summary.__dict__}
+
+
+def run_messy_fy_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
+    config = _messy_fy_config_from_form(form)
+    library = load_messy_fy_prompt_library(_path_value(form, "prompt_library", default_messy_fy_prompt_library()))
+    plan = create_messy_fy_plan(config, library)
+    return {"kind": "messy-fy-dry-run", **messy_fy_plan_to_dict(plan)}
+
+
+def run_messy_fy_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
+    config = _messy_fy_config_from_form(form)
+    api_key = _text_value(form, "api_key") or os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise ValueError("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or provide an API key.")
+    library = load_messy_fy_prompt_library(_path_value(form, "prompt_library", default_messy_fy_prompt_library()))
+    client = OpenRouterClient(api_key=api_key)
+    summary = run_messy_fy_generation(config, library, client)
+    return {"kind": "messy-fy-generation", **summary.__dict__}
 
 
 def run_background_from_form(form: dict[str, Any]) -> dict[str, object]:
@@ -182,7 +230,7 @@ def run_background_from_form(form: dict[str, Any]) -> dict[str, object]:
 def start_web_server(host: str = DEFAULT_WEB_HOST, port: int = DEFAULT_WEB_PORT) -> None:
     server = ThreadingHTTPServer((host, port), _GeneratorRequestHandler)
     url = f"http://{host}:{server.server_port}/"
-    print(f"Serving Messy generator web interface at {url}")
+    print(f"Serving Messy Virgo Artwork Creator at {url}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -202,15 +250,23 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
         try:
             form = self._read_form()
             if self.path == "/scene":
-                if _truthy(form, "dry_run"):
-                    result = run_scene_dry_run_from_form(form)
-                else:
-                    result = run_scene_generation_from_form(form)
-            elif self.path == "/reference":
-                if _truthy(form, "dry_run"):
-                    result = run_reference_dry_run_from_form(form)
-                else:
-                    result = run_reference_generation_from_form(form)
+                result = (
+                    run_scene_dry_run_from_form(form)
+                    if _truthy(form, "dry_run")
+                    else run_scene_generation_from_form(form)
+                )
+            elif self.path == "/avatar":
+                result = (
+                    run_avatar_dry_run_from_form(form)
+                    if _truthy(form, "dry_run")
+                    else run_avatar_generation_from_form(form)
+                )
+            elif self.path == "/messy-fy":
+                result = (
+                    run_messy_fy_dry_run_from_form(form)
+                    if _truthy(form, "dry_run")
+                    else run_messy_fy_generation_from_form(form)
+                )
             elif self.path == "/background":
                 result = run_background_from_form(form)
             else:
@@ -242,22 +298,35 @@ def _scene_config_from_form(form: dict[str, Any]) -> SceneGenerationConfig:
         source_image=_path_value(form, "source_image"),
         setting=_text_value(form, "setting"),
         action=_text_value(form, "action"),
-        output_dir=_path_value(form, "output_dir", DEFAULT_SCENE_OUTPUT_DIR),
-        prompt_library=_path_value(form, "prompt_library", DEFAULT_SCENE_PROMPT_LIBRARY),
-        model=_text_value(form, "model") or default_model(),
+        output_dir=_path_value(form, "output_dir", default_scene_output_dir()),
+        prompt_library=_path_value(form, "prompt_library", default_scene_prompt_library()),
+        model=resolve_model(_text_value(form, "model") or None, GenerationTask.SCENE),
         api_key=_text_value(form, "api_key") or None,
         filename=_text_value(form, "filename") or None,
     )
 
 
-def _reference_config_from_form(form: dict[str, Any]) -> GenerationConfig:
+def _avatar_config_from_form(form: dict[str, Any]) -> GenerationConfig:
     return GenerationConfig(
         source_image=_path_value(form, "source_image"),
-        output_dir=_path_value(form, "output_dir", Path("output/avatar-reference-set")),
-        prompt_library=_path_value(form, "prompt_library", default_prompt_library()),
-        model=_text_value(form, "model") or default_model(),
+        output_dir=_path_value(form, "output_dir", default_output_dir()),
+        prompt_library=_path_value(form, "prompt_library", default_avatar_prompt_library()),
+        model=resolve_model(_text_value(form, "model") or None, GenerationTask.AVATAR),
         api_key=_text_value(form, "api_key") or None,
         test_mode=_truthy(form, "test_mode"),
+    )
+
+
+def _messy_fy_config_from_form(form: dict[str, Any]) -> MessyFyGenerationConfig:
+    return MessyFyGenerationConfig(
+        source_image=_path_value(form, "source_image"),
+        output_dir=_path_value(form, "output_dir", default_messy_fy_output_dir()),
+        prompt_library=_path_value(form, "prompt_library", default_messy_fy_prompt_library()),
+        model=resolve_model(_text_value(form, "model") or None, GenerationTask.MESSY_FY),
+        api_key=_text_value(form, "api_key") or None,
+        hint=_text_value(form, "hint") or None,
+        filename=_text_value(form, "filename") or None,
+        remove_background=_truthy(form, "remove_background"),
     )
 
 

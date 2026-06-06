@@ -82,8 +82,8 @@ class OpenRouterClient:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                "HTTP-Referer": "https://local/avatar-reference-generator",
-                "X-Title": "Avatar Reference Generator",
+                "HTTP-Referer": "https://local/mv-artwork-creator",
+                "X-Title": "Messy Virgo Artwork Creator",
             },
         )
 

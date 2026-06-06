@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -11,14 +12,18 @@ from typing import Callable, Protocol
 
 from PIL import Image
 
+from .user_config import default_scene_prompt_library
 from .config import DEFAULT_MODEL
 from .openrouter import OpenRouterClient, ProviderImageRequest
 from .scene_prompts import ScenePromptLibrary
 from .validation import validate_png_alpha
 
 
-DEFAULT_SCENE_OUTPUT_DIR = Path("output/messy-scenes")
-DEFAULT_SCENE_PROMPT_LIBRARY = Path("config/messy_scene_prompts.yaml")
+DEFAULT_SCENE_OUTPUT_DIR = Path("output/scenes")
+
+
+def default_scene_output_dir() -> Path:
+    return Path(os.environ.get("MVAC_SCENE_OUTPUT", str(DEFAULT_SCENE_OUTPUT_DIR)))
 
 
 class SceneImageClient(Protocol):
@@ -32,7 +37,7 @@ class SceneGenerationConfig:
     setting: str
     action: str
     output_dir: Path = DEFAULT_SCENE_OUTPUT_DIR
-    prompt_library: Path = DEFAULT_SCENE_PROMPT_LIBRARY
+    prompt_library: Path = field(default_factory=default_scene_prompt_library)
     model: str = DEFAULT_MODEL
     api_key: str | None = None
     filename: str | None = None

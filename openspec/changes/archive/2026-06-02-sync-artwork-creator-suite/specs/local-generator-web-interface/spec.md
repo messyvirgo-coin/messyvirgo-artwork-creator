@@ -1,10 +1,4 @@
-# local-generator-web-interface Specification
-
-## Purpose
-
-Provide a simple local browser UI (stdlib HTTP server, no frontend framework) for `mvac` generator workflows: avatar, scene, messy-fy, and optional background removal. The web UI invokes the same library code paths as the CLI without changing workflow semantics.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Local Web Interface Startup
 
@@ -20,6 +14,8 @@ The system SHALL provide a `web` CLI subcommand that starts a local browser inte
 - **WHEN** a user provides `--host` or `--port` to the `web` command
 - **THEN** the server binds to the requested host and port
 
+## ADDED Requirements
+
 ### Requirement: Web Avatar Form
 
 The local web interface SHALL expose avatar reference planning and generation.
@@ -33,30 +29,6 @@ The local web interface SHALL expose avatar reference planning and generation.
 
 - **WHEN** a user submits the avatar form in dry-run mode
 - **THEN** the server renders the planned image count and planned items without calling OpenRouter
-
-#### Scenario: Avatar generation from web
-
-- **WHEN** a user submits the avatar form with generation enabled and a credential
-- **THEN** the server invokes the avatar generation workflow and renders the JSON summary
-
-### Requirement: Web Scene Generation Form
-
-The local web interface SHALL allow users to submit a source avatar path, setting, action, output directory, filename, and model for scene generation.
-
-#### Scenario: Scene form is rendered
-
-- **WHEN** a user opens the local web interface
-- **THEN** the page shows fields for source avatar path, setting, action, output directory, model, filename, and API key override
-
-#### Scenario: Scene form dry run
-
-- **WHEN** a user submits the scene form in dry-run mode
-- **THEN** the server renders the composed prompt, resolved output path, and `openrouter_request` summary without making an OpenRouter request
-
-#### Scenario: Scene form generation
-
-- **WHEN** a user submits the scene form with generation enabled and a credential
-- **THEN** the server invokes the scene generation workflow and renders the JSON summary
 
 ### Requirement: Web Messy-Fy Form
 
@@ -72,10 +44,7 @@ The local web interface SHALL allow users to submit a source image path, optiona
 - **WHEN** a user submits the messy-fy form in dry-run mode
 - **THEN** the server renders the composed prompt, resolved output path, and `openrouter_request` summary without calling OpenRouter
 
-#### Scenario: Messy-fy form generation
-
-- **WHEN** a user submits the messy-fy form with generation enabled and a credential
-- **THEN** the server invokes the messy-fy generation workflow and renders the JSON summary
+## MODIFIED Requirements
 
 ### Requirement: Web Background Removal Form
 
@@ -91,16 +60,10 @@ The local web interface SHALL expose the background-removal workflow as an optio
 - **WHEN** a user submits the background-removal form with valid input
 - **THEN** the server invokes the existing background-removal workflow and renders the JSON summary
 
-### Requirement: Local Web Error Reporting
+## REMOVED Requirements
 
-The local web interface SHALL report validation and execution errors in the rendered page instead of crashing the server.
+### Requirement: Web Existing Workflow Access
 
-#### Scenario: Invalid form input
+**Reason**: Split into explicit avatar, scene, messy-fy, and background-removal form requirements.
 
-- **WHEN** a user submits invalid input
-- **THEN** the server renders an error message and remains available for further requests
-
-#### Scenario: Error messages are escaped
-
-- **WHEN** the server renders an error containing user-controlled text
-- **THEN** the error is HTML-escaped in the rendered page
+**Migration**: No behavior change; requirements are reorganized under named form requirements.

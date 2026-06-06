@@ -10,15 +10,15 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from avatar_reference_generator.background import _strip_near_white_remnants, remove_backgrounds
-from avatar_reference_generator.sharpen import sharpen_image
-from avatar_reference_generator.config import GenerationConfig, load_env_file
-from avatar_reference_generator.cli import main
-from avatar_reference_generator.executor import run_generation
-from avatar_reference_generator.openrouter import OpenRouterClient
-from avatar_reference_generator.planner import create_generation_plan
-from avatar_reference_generator.prompts import load_prompt_library
-from avatar_reference_generator.validation import validate_png_alpha
+from mv_artwork_creator.background import _strip_near_white_remnants, remove_backgrounds
+from mv_artwork_creator.sharpen import sharpen_image
+from mv_artwork_creator.config import GenerationConfig, load_env_file
+from mv_artwork_creator.cli import main
+from mv_artwork_creator.executor import run_generation
+from mv_artwork_creator.openrouter import OpenRouterClient
+from mv_artwork_creator.planner import create_generation_plan
+from mv_artwork_creator.prompts import load_prompt_library
+from mv_artwork_creator.validation import validate_png_alpha
 
 
 PNG_RGBA_1X1 = base64.b64decode(
@@ -73,14 +73,14 @@ class FlakyClient:
 class AvatarReferenceGeneratorTests(unittest.TestCase):
     def test_load_env_file_sets_openrouter_key_without_overriding_existing_values(self):
         previous_key = os.environ.get("OPENROUTER_API_KEY")
-        previous_model = os.environ.get("AVATAR_REFERENCE_MODEL")
+        previous_model = os.environ.get("MVAC_AVATAR_MODEL")
         try:
             os.environ["OPENROUTER_API_KEY"] = "already-exported"
-            os.environ.pop("AVATAR_REFERENCE_MODEL", None)
+            os.environ.pop("MVAC_AVATAR_MODEL", None)
             with tempfile.TemporaryDirectory() as tmp:
                 env_file = Path(tmp) / ".env"
                 env_file.write_text(
-                    'OPENROUTER_API_KEY="from-file"\nexport AVATAR_REFERENCE_MODEL=custom/model\n',
+                    'OPENROUTER_API_KEY="from-file"\nexport MVAC_AVATAR_MODEL=custom/model\n',
                     encoding="utf-8",
                 )
 
@@ -88,19 +88,19 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
 
             self.assertEqual("from-file", loaded["OPENROUTER_API_KEY"])
             self.assertEqual("already-exported", os.environ["OPENROUTER_API_KEY"])
-            self.assertEqual("custom/model", os.environ["AVATAR_REFERENCE_MODEL"])
+            self.assertEqual("custom/model", os.environ["MVAC_AVATAR_MODEL"])
         finally:
             if previous_key is None:
                 os.environ.pop("OPENROUTER_API_KEY", None)
             else:
                 os.environ["OPENROUTER_API_KEY"] = previous_key
             if previous_model is None:
-                os.environ.pop("AVATAR_REFERENCE_MODEL", None)
+                os.environ.pop("MVAC_AVATAR_MODEL", None)
             else:
-                os.environ["AVATAR_REFERENCE_MODEL"] = previous_model
+                os.environ["MVAC_AVATAR_MODEL"] = previous_model
 
     def test_prompt_library_loads_and_composes_prompt(self):
-        library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+        library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
         prompt = library.compose_prompt("front_45_left", "half_body")
 
@@ -110,7 +110,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
         self.assertIn("Do not redesign", library.negative_prompt)
 
     def test_prompt_library_describes_messy_as_elegant_allocator_with_long_trousers(self):
-        library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+        library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
         full_body_prompt = library.compose_prompt("front", "full_body")
 
@@ -124,7 +124,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
         self.assertIn("new accessories", library.negative_prompt)
 
     def test_missing_prompt_fragment_is_rejected(self):
-        library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+        library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
         with self.assertRaisesRegex(ValueError, "Missing angle prompt"):
             library.compose_prompt("not_an_angle", "portrait")
@@ -145,7 +145,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "avatar.png"
             source.write_bytes(PNG_RGBA_1X1)
             config = GenerationConfig(source_image=source, output_dir=Path(tmp) / "out")
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
             plan = create_generation_plan(config, library)
 
@@ -162,7 +162,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
                 output_dir=Path(tmp) / "out",
                 presets=["front:portrait", "left_side:full_body"],
             )
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
             plan = create_generation_plan(config, library)
 
@@ -175,7 +175,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "avatar.png"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
             default_plan = create_generation_plan(
                 GenerationConfig(source_image=source, output_dir=Path(tmp) / "out", test_mode=True),
@@ -277,12 +277,12 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "avatar.png"
             output = Path(tmp) / "out"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
             config = GenerationConfig(
                 source_image=source,
                 output_dir=output,
                 test_mode=True,
-                prompt_library=Path("config/avatar_prompts.yaml"),
+                prompt_library=Path("mv_artwork_creator/resources/avatar_prompts.yaml"),
             )
 
             client = FakeClient()
@@ -314,7 +314,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "avatar.png"
             output = Path(tmp) / "out"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
 
             run_generation(GenerationConfig(source_image=source, output_dir=output, test_mode=True), library, JpegClient())
             metadata = json.loads((output / "front__portrait.json").read_text())
@@ -329,7 +329,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "avatar.png"
             output = Path(tmp) / "out"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
             config = GenerationConfig(source_image=source, output_dir=output, test_mode=True)
             client = FakeClient()
 
@@ -352,7 +352,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source = Path(tmp) / "avatar.png"
             output = Path(tmp) / "out"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
             config = GenerationConfig(
                 source_image=source,
                 output_dir=output,
@@ -371,7 +371,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "avatar.png"
             source.write_bytes(PNG_RGBA_1X1)
-            library = load_prompt_library(Path("config/avatar_prompts.yaml"))
+            library = load_prompt_library(Path("mv_artwork_creator/resources/avatar_prompts.yaml"))
             config = GenerationConfig(source_image=source, output_dir=Path(tmp) / "out", test_mode=True, retry_count=-1)
 
             with self.assertRaisesRegex(ValueError, "retry_count"):
@@ -383,7 +383,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
             source.write_bytes(PNG_RGBA_1X1)
 
             with self.assertRaises(SystemExit) as raised:
-                main([str(source), "--dry-run", "--test-preset", "front:portrait"])
+                main(["avatar", str(source), "--dry-run", "--test-preset", "front:portrait"])
 
             self.assertNotEqual(0, raised.exception.code)
 
@@ -471,7 +471,7 @@ class AvatarReferenceGeneratorTests(unittest.TestCase):
 
             with patch(
                 "sys.argv",
-                ["avatar_reference_generator", "remove-background", "--input-dir", str(source_dir), "--method", "flood"],
+                ["mv_artwork_creator", "remove-background", "--input-dir", str(source_dir), "--method", "flood"],
             ):
                 with redirect_stdout(StringIO()):
                     exit_code = main()
