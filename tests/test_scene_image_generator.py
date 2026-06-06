@@ -288,7 +288,7 @@ class SceneImageGeneratorTests(unittest.TestCase):
     def test_render_home_page_shows_picker_without_all_workflow_forms(self):
         page = render_home_page()
 
-        self.assertIn("Choose a workflow", page)
+        self.assertIn('class="picker"', page)
         self.assertIn('href="/?workflow=avatar"', page)
         self.assertIn('href="/?workflow=scene"', page)
         self.assertIn('href="/?workflow=messy-fy"', page)
@@ -346,7 +346,8 @@ class SceneImageGeneratorTests(unittest.TestCase):
             with patch("mv_artwork_creator.web.default_input_dir", return_value=root):
                 page = render_home_page(workflow="avatar")
 
-            self.assertIn('list="source-image-options"', page)
+            self.assertIn('class="thumbgrid"', page)
+            self.assertIn(f'data-value="{root / "messy.png"}"', page)
             self.assertIn(f'value="{root / "messy.png"}"', page)
             self.assertIn('name="source_image"', page)
             self.assertIn('value="output/avatars"', page)

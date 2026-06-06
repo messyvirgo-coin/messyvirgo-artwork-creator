@@ -1,57 +1,61 @@
 system_prompt: >
-  Repaint the attached reference image in the Messy Virgo brand visual style.
-  Keep the same content intent: preserve subjects, scene, layout hierarchy,
-  composition, framing, pose, and the meaning of important readable text.
-  This is a stylistic repaint only—do not swap in different people, objects,
-  or scenes. You must preserve the original image structure closely: keep the same
-  major objects, proportions, information density, section placement, and
-  visual balance. Do not invent large new hero illustrations, mascot brains,
-  arrows, charts, diagrams, empty panels, or decorative systems that are not
-  already implied by the source.
+  You are restyling the attached reference image into the Messy Virgo brand
+  visual identity. This is a complete brand redesign of the image, not a color
+  filter or tint pass. Preserve the message and the information hierarchy: the
+  same headline meaning, the same body copy, the same reading order, and the
+  same number and rough placement of content blocks. Fully rebuild the visual
+  system—background, typography, line work, icons, and palette—in the Messy
+  Virgo look. Keep all readable text legible and faithful in meaning; re-typeset
+  it cleanly, and never garble, misspell, translate, or invent copy.
 
-  Do not keep titles, captions, typography, panels, source background colors,
-  or decorative surfaces as-is just because they appear in the input; preserve
-  the source intent and hierarchy while translating those visual systems deeply
-  into Messy Virgo.
+  Critically, remove the source's original aesthetic. These source images are
+  technical "blueprint" slides: graph-paper and grid backgrounds, pale cyan or
+  teal engineering line-art, monospaced typewriter text, hand-sketched charts,
+  exploded schematic diagrams, gear-and-circuit "brain" drawings, and draftsman
+  callouts. Do not keep any of that. Replace blueprint grids and graph paper
+  with a smooth dark near-black surface, replace cyan technical linework and
+  pencil sketches with clean modern vector elements, and replace monospaced or
+  typewriter type with Messy's sans typography. Translate any diagram, chart, or
+  schematic into a sleek dark crypto-finance dashboard equivalent—cards, status
+  pills, minimal line icons, and metric readouts—but only where the source
+  actually conveyed that information.
 
-  Apply the Messy brand look: clean anime-inspired line art and shading where
-  it fits the source, dark poppy-punk mood, subtle blue, pink, and violet
-  neon accents, soft amber highlights, and polished crypto-finance elegance,
-  but use amber only as a restrained secondary accent. The primary visual read
-  must be dark near-black UI with white and gray text plus a primary neon pink
-  accent, supported by subtle violet and blue accents.
+  Messy Virgo design language. Background: a deep near-black charcoal surface,
+  around #0a0a0f to #101015, optionally with a very subtle pink or violet radial
+  glow—flat, premium, and app-like, never paper, grid, or blueprint. Color: the
+  primary neon pink accent, around #ff5fbf, dominates and carries key emphasis
+  and glows, supported by restrained violet and cool blue secondary accents,
+  with warm amber only as a small minor highlight; text is white and soft cool
+  gray, and any glow reads pink, never gold or amber-dominant. Typography: a
+  clean modern geometric or grotesk sans, Inter-like—bold compact headings in
+  white with selective neon-pink emphasis, small uppercase eyebrow labels with
+  wide letter spacing above headings, soft gray body copy at a comfortable size,
+  and bold tabular sans for numbers and metrics; replace every source font.
+  Surfaces: dark glassmorphism panels—translucent charcoal and near-black cards
+  over the dark background, thin one-pixel borders in dark gray or neon pink,
+  restrained rounded corners, gentle blur, and a soft pink outer glow on the
+  most important elements. Components: where the source shows informational UI,
+  render it as Messy dashboard pieces—status pills, token and fund cards,
+  eyebrow labels, and dashboard metrics with up and down deltas, green for up
+  and red for down—added only where the source already implied data, never
+  inventing new metrics or charts.
 
-  Extend this with the app.messyvirgo.com design language: Inter-like clean
-  sans typography, bold compact headings, white or soft gray body text, small
-  uppercase eyebrow labels, status pills, token and fund-card microcopy, dark
-  glassmorphism panels, translucent black and charcoal surfaces, thin dark gray
-  or neon-pink borders, restrained rounded corners, subtle blur, soft pink
-  glows, and dashboard-like crypto-finance metrics only where the source
-  already contains informational UI.
-
-  Always replace source fonts with Messy-style typography. Rebuild headings as bold
-  clean sans title blocks using white text with neon pink emphasis; avoid
-  gold-led or pink-to-gold headline treatments unless the source already
-  requires a special highlight. Restyle source background colors into dark
-  near-black, glassy, finance-dashboard backgrounds with the existing blue,
-  pink, violet, and amber accent palette, with pink dominant and amber minor.
-  Restyle what is already there; do not replace it with unrelated new content.
-  Avoid monospaced, typewriter, blueprint, engineering schematic, cybernetic
-  poster, and notebook UI aesthetics unless they are clearly present in the
-  source image.
-  {hint_section}
+  Keep the same composition, framing, and aspect ratio, and keep the same blocks
+  of text and imagery in roughly the same positions—just reskinned into the look
+  above. {hint_section}
 
   Do not insert Messy the character, a mascot avatar, or an unrelated anime
   woman unless they already appear in the source image.
 
 negative_prompt: >
-  Inserting Messy character, mascot, or unrelated anime woman. Replacing the
-  subject with a different person or scene. Changing, removing, misspelling,
-  or garbling text from the source. Second person, twins, clone, crowd when
-  the source has one subject. Complete scene swap, redesign, or new props.
-  Wax candles, random floating charts, HUD, watermarks, logos not in source.
-  Monospaced typewriter text, blueprint grid, schematic poster, cybernetic
-  brain, oversized arrows, empty split-screen panels, gold-dominant palette,
-  amber-dominant glow, major layout drift, new hero illustration, invented
-  charts or diagrams. Extra or missing limbs, bad hands, busy unrelated
-  background when source was simple.
+  Blueprint grid, graph-paper background, engineering schematic, exploded
+  mechanical diagram, draftsman callouts, technical drawing, cyan or teal
+  line-art, pencil sketch charts, gear-and-circuit brain, monospaced or
+  typewriter text, notebook UI. Gold-dominant or amber-dominant palette, gold
+  headline treatment. Inserting Messy character, mascot, or unrelated anime
+  woman. Replacing the subject with a different person or scene, complete scene
+  swap, changing the meaning of the content, new hero illustration, invented
+  charts, diagrams, or metrics not in the source. Changing, removing,
+  misspelling, translating, or garbling text from the source. Major layout
+  drift, reordered content, different aspect ratio. Second person, twins, clone,
+  crowd. HUD, watermarks, logos not in source. Extra or missing limbs, bad hands.
