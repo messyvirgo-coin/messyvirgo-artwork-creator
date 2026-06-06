@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
@@ -20,6 +20,8 @@ from mv_artwork_creator.scene_executor import (
 )
 from mv_artwork_creator.scene_prompts import load_scene_prompt_library
 from mv_artwork_creator.web import (
+    _GeneratorRequestHandler,
+    list_input_dir_images,
     render_home_page,
     run_avatar_generation_from_form,
     run_avatar_dry_run_from_form,
@@ -269,6 +271,86 @@ class SceneImageGeneratorTests(unittest.TestCase):
             self.assertEqual(0, exit_code)
             self.assertEqual(21, payload["planned_count"])
 
+    def test_list_input_dir_images_ignores_hidden_and_non_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "messy.png").write_bytes(PNG_RGBA_1X1)
+            (root / "photo.jpg").write_bytes(b"not-a-jpeg")
+            (root / ".hidden.png").write_bytes(PNG_RGBA_1X1)
+            (root / "notes.txt").write_text("nope")
+
+            all_images = list_input_dir_images(root)
+            png_only = list_input_dir_images(root, extensions={".png"})
+
+            self.assertEqual([root / "messy.png", root / "photo.jpg"], all_images)
+            self.assertEqual([root / "messy.png"], png_only)
+
+    def test_render_home_page_shows_picker_without_all_workflow_forms(self):
+        page = render_home_page()
+
+        self.assertIn("Choose a workflow", page)
+        self.assertIn('href="/?workflow=avatar"', page)
+        self.assertIn('href="/?workflow=scene"', page)
+        self.assertIn('href="/?workflow=messy-fy"', page)
+        self.assertIn('href="/?workflow=background"', page)
+        self.assertNotIn('action="/avatar"', page)
+        self.assertNotIn('action="/scene"', page)
+        self.assertNotIn('action="/messy-fy"', page)
+        self.assertNotIn('action="/background"', page)
+
+    def test_render_home_page_renders_focused_workflow_pages(self):
+        workflows = {
+            "avatar": "Avatar Reference Set",
+            "scene": "Scene Generator",
+            "messy-fy": "Messy-fy",
+            "background": "Remove Background",
+        }
+
+        for workflow, heading in workflows.items():
+            with self.subTest(workflow=workflow):
+                page = render_home_page(workflow=workflow)
+
+                self.assertIn(heading, page)
+                self.assertIn('href="/"', page)
+                self.assertIn(f'action="/{workflow}"', page)
+                other_actions = {f'action="/{name}"' for name in workflows if name != workflow}
+                self.assertTrue(all(action not in page for action in other_actions))
+
+    def test_render_home_page_omits_generator_api_key_override_fields(self):
+        for workflow in ["avatar", "scene", "messy-fy"]:
+            with self.subTest(workflow=workflow):
+                page = render_home_page(workflow=workflow)
+
+                self.assertNotIn("API key override", page)
+                self.assertNotIn('name="api_key"', page)
+
+    def test_render_home_page_uses_model_alias_dropdown_defaults(self):
+        avatar = render_home_page(workflow="avatar")
+        messy_fy = render_home_page(workflow="messy-fy")
+
+        self.assertIn('<select name="model"', avatar)
+        self.assertIn('<option value="seedream" selected>', avatar)
+        self.assertIn('<option value="nano-banana"', avatar)
+        self.assertNotIn('<option value="gemini-flash"', avatar)
+        self.assertNotIn('<option value="seedream-4.5"', avatar)
+        self.assertIn('<select name="model"', messy_fy)
+        self.assertIn('<option value="nano-banana" selected>', messy_fy)
+        self.assertNotIn('<option value="gemini-flash"', messy_fy)
+        self.assertNotIn('<option value="seedream-4.5"', messy_fy)
+
+    def test_render_home_page_lists_input_directory_images_and_output_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "messy.png").write_bytes(PNG_RGBA_1X1)
+
+            with patch("mv_artwork_creator.web.default_input_dir", return_value=root):
+                page = render_home_page(workflow="avatar")
+
+            self.assertIn('list="source-image-options"', page)
+            self.assertIn(f'value="{root / "messy.png"}"', page)
+            self.assertIn('name="source_image"', page)
+            self.assertIn('value="output/avatars"', page)
+
     def test_web_helpers_render_scene_and_avatar_dry_runs(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "messy.png"
@@ -322,6 +404,17 @@ class SceneImageGeneratorTests(unittest.TestCase):
 
         self.assertIn("&lt;bad input&gt;", page)
         self.assertNotIn("<bad input>", page)
+
+    def test_web_post_does_not_render_error_page_after_client_disconnect(self):
+        handler = _GeneratorRequestHandler.__new__(_GeneratorRequestHandler)
+        handler.path = "/background"
+        handler._read_form = Mock(return_value={"source": ["input"]})
+        handler._send_html = Mock(side_effect=BrokenPipeError)
+
+        with patch("mv_artwork_creator.web.run_background_from_form", return_value={"kind": "background-removal"}):
+            handler.do_POST()
+
+        self.assertEqual(1, handler._send_html.call_count)
 
 
 if __name__ == "__main__":
