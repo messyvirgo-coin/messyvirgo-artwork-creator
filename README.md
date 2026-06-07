@@ -12,6 +12,14 @@ Repo: [messyvirgo-coin/messyvirgo-artwork-creator](https://github.com/messyvirgo
 
 Generation runs in the cloud (OpenRouter). Your PC sends the request and saves files to `output/`.
 
+**Prefer the browser?** After [one-time setup](#setup-once), run:
+
+```bash
+./start_web.sh
+```
+
+That activates the project Python environment and starts the local web UI (usually [http://127.0.0.1:8765/](http://127.0.0.1:8765/)). The web server runs inside the same `.venv` as the CLI — you cannot start it without that environment.
+
 ---
 
 ## Which command do I use?
@@ -22,7 +30,7 @@ Generation runs in the cloud (OpenRouter). Your PC sends the request and saves f
 | One scene illustration | `mvac scene` |
 | Restyle an existing image | `mvac messy-fy` |
 
-Prefer forms over the terminal? Run `mvac web` after setup ([Browser UI](#browser-ui)).
+Prefer forms over the terminal? Run `./start_web.sh` after setup ([Browser UI](#browser-ui)).
 
 **Optional:** [remove white backgrounds](#optional-transparent-backgrounds) from avatar outputs — extra install, runs on your PC, skip on weak laptops.
 
@@ -117,6 +125,18 @@ Output: `output/messyfied/styled.png`.
 
 ## Browser UI
 
+The web UI is a local Python server — it needs the project virtualenv active (same as `mvac` CLI commands).
+
+**Recommended** — from the project folder, with [setup](#setup-once) done:
+
+```bash
+./start_web.sh
+```
+
+`start_web.sh` activates `.venv`, then runs `mvac web`. Optional port: `./start_web.sh --port 8899`.
+
+**Manual** — if you already ran `source .venv/bin/activate`:
+
 ```bash
 mvac web
 ```
@@ -166,7 +186,7 @@ Do not run this on scene images unless you intend to strip the environment.
 | Missing API key | Set `OPENROUTER_API_KEY` in `.env` |
 | Transparent PNG required / no alpha channel | Use RGBA PNG for `avatar` and `scene` (see [Avatar](#avatar--21-reference-images)) |
 | Empty setting or action | Fill both `--setting` and `--action` for `scene` |
-| `mvac` not found | Activate `.venv` or use `python3 -m mv_artwork_creator` |
+| `mvac` not found | Run `./start_web.sh`, or activate `.venv` / use `python3 -m mv_artwork_creator` |
 | Image skipped on re-run | Add `--regenerate`, or delete that `.png` + `.json` |
 
 **Re-run behavior:** same command skips finished images. `--regenerate` redoes all. For one avatar angle: delete its files, then `mvac avatar ... --preset angle:shot`.

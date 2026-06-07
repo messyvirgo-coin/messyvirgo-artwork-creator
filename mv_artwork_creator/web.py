@@ -43,6 +43,7 @@ DEFAULT_WEB_HOST = "127.0.0.1"
 DEFAULT_WEB_PORT = 8765
 DEFAULT_INPUT_DIR = Path("input")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+SERVABLE_EXTENSIONS = IMAGE_EXTENSIONS | {".json"}
 PNG_EXTENSIONS = {".png"}
 CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)
 WORKFLOW_LABELS = {
@@ -143,9 +144,13 @@ def _render_image_picker(
     extensions: set[str] | None = None,
     required: bool = True,
     entries: list[Path] | None = None,
+    selected: str = "",
 ) -> str:
     files = entries if entries is not None else list_input_dir_images(extensions=extensions)
-    default_value = html.escape(str(files[0])) if files else ""
+    if selected:
+        default_value = html.escape(selected)
+    else:
+        default_value = html.escape(str(files[0])) if files else ""
     required_attr = " required" if required else ""
     if files:
         tiles = "".join(_thumb_tile(path, selectable=True) for path in files)
@@ -272,6 +277,9 @@ PAGE_STYLE = """
       background-repeat: no-repeat; background-position: right 12px center; padding-right: 34px; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
     @media (max-width: 640px) { .grid-2 { grid-template-columns: 1fr; } }
+    .hint { margin: -2px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+      background: #0c0c11; padding: 1px 5px; border-radius: 5px; border: 1px solid var(--line-soft); color: #d8b9cd; }
 
     .thumbgrid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px;
@@ -330,6 +338,12 @@ PAGE_STYLE = """
     }
     button.run:hover { transform: translateY(-2px); filter: brightness(1.05); box-shadow: 0 18px 38px -14px rgba(255,105,180,.9); }
     button.run:active { transform: translateY(0); }
+    button.run:disabled, button.run.is-busy { cursor: progress; transform: none; filter: saturate(.8) brightness(.95); box-shadow: none; }
+    .busy-note { margin-right: auto; align-self: center; color: var(--pink-soft); font-size: 12.5px; font-weight: 600; }
+    .spinner { display: inline-block; width: 13px; height: 13px; margin-right: 8px; vertical-align: -2px;
+      border-radius: 50%; border: 2px solid rgba(42,10,28,.35); border-top-color: #2a0a1c; animation: spin .7s linear infinite; }
+    .workform.is-busy { pointer-events: none; opacity: .96; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .result { margin-top: 26px; }
     .result-head { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
@@ -365,8 +379,12 @@ PAGE_STYLE = """
     .gtile .gmedia img { width: 100%; height: 100%; object-fit: contain; }
     .gtile .planned { color: var(--muted); font-size: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px; text-align: center; }
     .gtile .planned svg { width: 26px; height: 26px; opacity: .6; }
+    .gtile a.gmedia { display: grid; cursor: zoom-in; }
     .gtile .gcap { padding: 9px 11px; font-size: 11.5px; color: #aeb4bd; word-break: break-word; border-top: 1px solid var(--line-soft); }
     .gtile .gcap b { color: var(--text); font-weight: 600; }
+    .gtile .gcap-dir { color: var(--muted); }
+    .gtile .gcap-links { display: block; margin-top: 6px; font-weight: 700; font-size: 12px; }
+    .gtile .gcap-links a { color: var(--pink); }
 
     details.raw { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); overflow: hidden; }
     details.raw summary { cursor: pointer; padding: 12px 16px; font-size: 12.5px; color: var(--muted); font-weight: 600; list-style: none; }
@@ -396,6 +414,28 @@ PAGE_SCRIPT = """
     field.addEventListener('input', sync);
     sync();
   });
+
+  document.querySelectorAll('form.workform').forEach(function (form) {
+    form.addEventListener('submit', function (event) {
+      if (form.dataset.busy === '1') { event.preventDefault(); return; }
+      if (!form.checkValidity()) return;
+      form.dataset.busy = '1';
+      form.classList.add('is-busy');
+      var btn = form.querySelector('button.run');
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('is-busy');
+        btn.innerHTML = '<span class="spinner"></span>Working…';
+        var note = document.createElement('span');
+        note.className = 'busy-note';
+        note.textContent = 'Generating — this can take up to a minute. Don\\'t close the tab.';
+        btn.parentNode.insertBefore(note, btn);
+      }
+    });
+  });
+
+  var resultEl = document.querySelector('.result');
+  if (resultEl) { resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 """
 
 
@@ -404,9 +444,10 @@ def render_home_page(
     error: str | None = None,
     *,
     workflow: str | None = None,
+    form: dict[str, Any] | None = None,
 ) -> str:
     workflow = workflow if workflow in WORKFLOW_LABELS else None
-    content = _render_workflow_form(workflow) if workflow else _render_workflow_picker()
+    content = _render_workflow_form(workflow, form) if workflow else _render_workflow_picker()
     result_html = _render_result(result=result, error=error)
     title = WORKFLOW_LABELS.get(workflow or "", "Messy Virgo Artwork Creator")
     back = (
@@ -476,23 +517,34 @@ def _render_result(*, result: object | None = None, error: str | None = None) ->
     )
 
 
-def _planned_paths(data: dict[str, Any]) -> list[Path]:
-    paths: list[Path] = []
+def _output_entries(data: dict[str, Any]) -> list[tuple[Path, Path | None]]:
+    """Pair each produced/planned image with its JSON metadata sidecar (if known)."""
+    entries: list[tuple[Path, Path | None]] = []
     if isinstance(data.get("items"), list):
         for item in data["items"]:
             if isinstance(item, dict) and item.get("output_path"):
-                paths.append(Path(str(item["output_path"])))
+                meta = item.get("metadata_path")
+                entries.append((Path(str(item["output_path"])), Path(str(meta)) if meta else None))
+    top_meta = data.get("metadata_path")
+    top_meta_path = Path(str(top_meta)) if isinstance(top_meta, str) and top_meta else None
     for key in ("output_path", "transparent_output_path"):
         value = data.get(key)
         if isinstance(value, str) and value:
-            paths.append(Path(value))
-    return paths
+            entries.append((Path(value), top_meta_path if key == "output_path" else None))
+    return entries
 
 
-def _gallery_tile(path: Path) -> str:
-    cap = f'<div class="gcap"><b>{html.escape(path.name)}</b><br>{html.escape(str(path.parent))}/</div>'
-    if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
-        media = f'<div class="gmedia"><img loading="lazy" src="{_file_url(path)}" alt="{html.escape(path.name)}"></div>'
+def _file_link(path: Path, label: str) -> str:
+    return f'<a href="{_file_url(path)}" target="_blank" rel="noopener">{html.escape(label)}</a>'
+
+
+def _gallery_tile(path: Path, metadata_path: Path | None = None) -> str:
+    exists = path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    if exists:
+        media = (
+            f'<a class="gmedia" href="{_file_url(path)}" target="_blank" rel="noopener">'
+            f'<img loading="lazy" src="{_file_url(path)}" alt="{html.escape(path.name)}"></a>'
+        )
     else:
         media = (
             '<div class="gmedia"><span class="planned">'
@@ -500,6 +552,20 @@ def _gallery_tile(path: Path) -> str:
             'stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
             "will be written here</span></div>"
         )
+    links: list[str] = []
+    if exists:
+        links.append(_file_link(path, "Open"))
+    if metadata_path is not None and metadata_path.is_file():
+        links.append(_file_link(metadata_path, "JSON"))
+    link_html = (
+        f'<span class="gcap-links">{" · ".join(links)}</span>' if links else ""
+    )
+    cap = (
+        '<div class="gcap">'
+        f'<b>{html.escape(path.name)}</b><br>'
+        f'<span class="gcap-dir">{html.escape(str(path.parent))}/</span>'
+        f"{link_html}</div>"
+    )
     return f'<div class="gtile">{media}{cap}</div>'
 
 
@@ -536,9 +602,9 @@ def _render_dry_run_body(data: dict[str, Any]) -> str:
             '<div class="prompt-block"><h4>Prompt</h4>'
             f"<p>{html.escape(prompt.strip())}</p></div>"
         )
-    paths = _planned_paths(data)
-    if paths:
-        tiles = "".join(_gallery_tile(path) for path in paths)
+    entries = _output_entries(data)
+    if entries:
+        tiles = "".join(_gallery_tile(path, meta) for path, meta in entries)
         parts.append(f'<div class="gallery">{tiles}</div>')
     return "".join(parts)
 
@@ -567,10 +633,15 @@ def _render_run_body(data: dict[str, Any]) -> str:
             for key, value in stats
         )
         parts.append(f'<div class="stats">{cells}</div>')
-    paths = [p for p in _planned_paths(data) if p.is_file()]
-    if paths:
-        tiles = "".join(_gallery_tile(path) for path in paths)
+    entries = [(p, m) for p, m in _output_entries(data) if p.is_file()]
+    if entries:
+        tiles = "".join(_gallery_tile(path, meta) for path, meta in entries)
         parts.append(f'<div class="gallery">{tiles}</div>')
+    elif data.get("output_dir"):
+        parts.append(
+            '<div class="prompt-block"><p>Wrote output to '
+            f'<code class="path">{html.escape(str(data["output_dir"]))}/</code></p></div>'
+        )
     if not parts:
         parts.append('<div class="prompt-block"><p>Finished.</p></div>')
     return "".join(parts)
@@ -604,6 +675,25 @@ def _form_head(workflow: str, subtitle: str) -> str:
     )
 
 
+_WRITE_MODE_OPTIONS = [
+    ("version", "Save as a new version"),
+    ("skip", "Skip files that already exist"),
+    ("overwrite", "Overwrite existing files"),
+]
+
+
+def _render_write_mode(values: dict[str, Any] | None, *, default: str) -> str:
+    selected = _field_value(values, "write_mode", default)
+    options = "".join(
+        f'<option value="{value}"{" selected" if value == selected else ""}>{html.escape(label)}</option>'
+        for value, label in _WRITE_MODE_OPTIONS
+    )
+    return (
+        '<label>If the output already exists'
+        f'<select name="write_mode">{options}</select></label>'
+    )
+
+
 def _toggle(name: str, label: str, *, checked: bool = False) -> str:
     checked_attr = " checked" if checked else ""
     return (
@@ -612,91 +702,115 @@ def _toggle(name: str, label: str, *, checked: bool = False) -> str:
     )
 
 
-def _render_workflow_form(workflow: str | None) -> str:
+def _field_value(values: dict[str, Any] | None, key: str, default: str = "") -> str:
+    if values is None:
+        return default
+    return _text_value(values, key, default)
+
+
+def _field_checked(values: dict[str, Any] | None, key: str, default: bool) -> bool:
+    if values is None:
+        return default
+    return _truthy(values, key)
+
+
+def _render_workflow_form(workflow: str | None, values: dict[str, Any] | None = None) -> str:
     if workflow == "avatar":
-        return _render_avatar_form()
+        return _render_avatar_form(values)
     if workflow == "scene":
-        return _render_scene_form()
+        return _render_scene_form(values)
     if workflow == "messy-fy":
-        return _render_messy_fy_form()
+        return _render_messy_fy_form(values)
     if workflow == "background":
-        return _render_background_form()
+        return _render_background_form(values)
     return _render_workflow_picker()
 
 
-def _render_avatar_form() -> str:
+def _render_avatar_form(values: dict[str, Any] | None = None) -> str:
     return f"""<form class="panel workform" method="post" action="/avatar">
       {_form_head("avatar", "Generate every reference angle from one source PNG.")}
-      {_render_image_picker("source_image", label="Source avatar PNG", extensions=PNG_EXTENSIONS)}
+      {_render_image_picker("source_image", label="Source avatar PNG", extensions=PNG_EXTENSIONS, selected=_field_value(values, "source_image"))}
       <label>Output directory
-        <input type="text" name="output_dir" value="{html.escape(str(default_output_dir()))}">
+        <input type="text" name="output_dir" value="{html.escape(_field_value(values, "output_dir", str(default_output_dir())))}">
       </label>
-      {_render_model_select(GenerationTask.AVATAR)}
+      {_render_model_select(GenerationTask.AVATAR, selected_override=_field_value(values, "model") or None)}
+      {_render_write_mode(values, default="skip")}
       <div class="options">
-        {_toggle("dry_run", "Dry run", checked=True)}
-        {_toggle("test_mode", "Test image only")}
+        {_toggle("dry_run", "Dry run", checked=_field_checked(values, "dry_run", True))}
+        {_toggle("test_mode", "Test image only", checked=_field_checked(values, "test_mode", False))}
       </div>
       <div class="form-actions"><button class="run" type="submit">Run avatar set</button></div>
     </form>"""
 
 
-def _render_scene_form() -> str:
+def _render_scene_form(values: dict[str, Any] | None = None) -> str:
     return f"""<form class="panel workform" method="post" action="/scene">
       {_form_head("scene", "Place Messy into a generated scene from a source avatar.")}
-      {_render_image_picker("source_image", label="Source avatar PNG", extensions=PNG_EXTENSIONS)}
+      {_render_image_picker("source_image", label="Source avatar PNG", extensions=PNG_EXTENSIONS, selected=_field_value(values, "source_image"))}
       <div class="grid-2">
-        <label>Where Messy is<textarea name="setting" required placeholder="a neon-lit ramen bar at night"></textarea></label>
-        <label>What Messy is doing<textarea name="action" required placeholder="slurping noodles, grinning at the camera"></textarea></label>
+        <label>Where Messy is<textarea name="setting" required placeholder="a neon-lit ramen bar at night">{html.escape(_field_value(values, "setting"))}</textarea></label>
+        <label>What Messy is doing<textarea name="action" required placeholder="slurping noodles, grinning at the camera">{html.escape(_field_value(values, "action"))}</textarea></label>
       </div>
       <div class="grid-2">
-        <label>Output directory<input type="text" name="output_dir" value="{html.escape(str(default_scene_output_dir()))}"></label>
-        <label>Output filename base<input type="text" name="filename" placeholder="optional"></label>
+        <label>Output directory<input type="text" name="output_dir" value="{html.escape(_field_value(values, "output_dir", str(default_scene_output_dir())))}"></label>
+        <label>Output filename base<input type="text" name="filename" value="{html.escape(_field_value(values, "filename"))}" placeholder="optional"></label>
       </div>
-      {_render_model_select(GenerationTask.SCENE)}
-      <div class="options">{_toggle("dry_run", "Dry run", checked=True)}</div>
+      {_render_model_select(GenerationTask.SCENE, selected_override=_field_value(values, "model") or None)}
+      {_render_write_mode(values, default="version")}
+      <div class="options">{_toggle("dry_run", "Dry run", checked=_field_checked(values, "dry_run", True))}</div>
       <div class="form-actions"><button class="run" type="submit">Generate scene</button></div>
     </form>"""
 
 
-def _render_messy_fy_form() -> str:
+def _render_messy_fy_form(values: dict[str, Any] | None = None) -> str:
     return f"""<form class="panel workform" method="post" action="/messy-fy">
       {_form_head("messy-fy", "Restyle an existing image in the Messy Virgo look.")}
-      {_render_image_picker("source_image", label="Source image")}
-      <label>Hint<textarea name="hint" placeholder="optional — nudge the restyle"></textarea></label>
+      {_render_image_picker("source_image", label="Source image", selected=_field_value(values, "source_image"))}
+      <label>Hint<textarea name="hint" placeholder="optional — nudge the restyle">{html.escape(_field_value(values, "hint"))}</textarea></label>
       <div class="grid-2">
-        <label>Output directory<input type="text" name="output_dir" value="{html.escape(str(default_messy_fy_output_dir()))}"></label>
-        <label>Output filename base<input type="text" name="filename" placeholder="optional"></label>
+        <label>Output directory<input type="text" name="output_dir" value="{html.escape(_field_value(values, "output_dir", str(default_messy_fy_output_dir())))}"></label>
+        <label>Output filename base<input type="text" name="filename" value="{html.escape(_field_value(values, "filename"))}" placeholder="optional"></label>
       </div>
-      {_render_model_select(GenerationTask.MESSY_FY)}
+      {_render_model_select(GenerationTask.MESSY_FY, selected_override=_field_value(values, "model") or None)}
+      {_render_write_mode(values, default="version")}
       <div class="options">
-        {_toggle("dry_run", "Dry run", checked=True)}
-        {_toggle("remove_background", "Remove background")}
+        {_toggle("dry_run", "Dry run", checked=_field_checked(values, "dry_run", True))}
+        {_toggle("remove_background", "Remove background", checked=_field_checked(values, "remove_background", False))}
       </div>
       <div class="form-actions"><button class="run" type="submit">Messy-fy it</button></div>
     </form>"""
 
 
-def _render_background_form() -> str:
+def _render_background_form(values: dict[str, Any] | None = None) -> str:
+    method = _field_value(values, "method", "rembg")
+    rembg_sel = " selected" if method != "flood" else ""
+    flood_sel = " selected" if method == "flood" else ""
     return f"""<form class="panel workform" method="post" action="/background">
       {_form_head("background", "Cut transparent backgrounds from an image or a whole folder.")}
-      {_render_image_picker("source", label="Input file or directory", entries=list_input_dir_entries())}
+      {_render_image_picker("source", label="Input file or directory", entries=list_input_dir_entries(), selected=_field_value(values, "source"))}
       <div class="grid-2">
-        <label>Output directory<input type="text" name="output_dir" value="output"></label>
+        <label>Output directory<input type="text" name="output_dir" value="{html.escape(_field_value(values, "output_dir", "output"))}"></label>
         <label>Method
           <select name="method">
-            <option value="rembg" selected>rembg (AI)</option>
-            <option value="flood">flood (fast)</option>
+            <option value="rembg"{rembg_sel}>rembg (AI)</option>
+            <option value="flood"{flood_sel}>flood (fast)</option>
           </select>
         </label>
       </div>
+      {_render_write_mode(values, default="skip")}
       <div class="form-actions"><button class="run" type="submit">Remove background</button></div>
     </form>"""
 
 
 
-def _render_model_select(task: GenerationTask, *, registry: ModelRegistry | None = None) -> str:
+def _render_model_select(
+    task: GenerationTask,
+    *,
+    registry: ModelRegistry | None = None,
+    selected_override: str | None = None,
+) -> str:
     registry = registry or load_model_registry()
-    selected = _selected_model_alias(task, registry)
+    selected = selected_override if selected_override else _selected_model_alias(task, registry)
     options = []
     for alias in _canonical_model_aliases(registry, preferred_alias=selected):
         selected_attr = " selected" if alias == selected else ""
@@ -736,11 +850,70 @@ def _canonical_model_aliases(registry: ModelRegistry, *, preferred_alias: str) -
     return sorted(selected_aliases)
 
 
+def _write_mode(form: dict[str, Any], default: str) -> str:
+    mode = _text_value(form, "write_mode") or default
+    return mode if mode in {"skip", "version", "overwrite"} else default
+
+
+def _next_free_dir(path: Path) -> Path:
+    """Return path, or the next non-existing/empty `-N` sibling, for fresh output."""
+    if not path.exists() or not any(path.iterdir()):
+        return path
+    index = 2
+    while True:
+        candidate = path.with_name(f"{path.name}-{index}")
+        if not candidate.exists() or not any(candidate.iterdir()):
+            return candidate
+        index += 1
+
+
+def _next_free_filename_config(config: Any, build_plan: Any) -> Any:
+    """Bump the config's filename to the next free `-N` so nothing is overwritten."""
+    plan = build_plan(config)
+    if not plan.output_path.exists():
+        return config
+    base = plan.output_path.stem
+    index = 2
+    while True:
+        candidate = config.with_updates(filename=f"{base}-{index}")
+        if not build_plan(candidate).output_path.exists():
+            return candidate
+        index += 1
+
+
 def run_scene_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
     config = _scene_config_from_form(form)
     library = load_scene_prompt_library(_path_value(form, "prompt_library", default_scene_prompt_library()))
+    config = _apply_scene_write_mode(form, config, library)
     plan = create_scene_plan(config, library)
     return {"kind": "scene-dry-run", **scene_plan_to_dict(plan)}
+
+
+def _apply_scene_write_mode(form: dict[str, Any], config: Any, library: Any) -> Any:
+    mode = _write_mode(form, "version")
+    if mode == "overwrite":
+        return config.with_updates(regenerate=True)
+    if mode == "version":
+        return _next_free_filename_config(config, lambda candidate: create_scene_plan(candidate, library))
+    return config
+
+
+def _apply_messy_fy_write_mode(form: dict[str, Any], config: Any, library: Any) -> Any:
+    mode = _write_mode(form, "version")
+    if mode == "overwrite":
+        return config.with_updates(regenerate=True)
+    if mode == "version":
+        return _next_free_filename_config(config, lambda candidate: create_messy_fy_plan(candidate, library))
+    return config
+
+
+def _apply_avatar_write_mode(form: dict[str, Any], config: Any) -> Any:
+    mode = _write_mode(form, "skip")
+    if mode == "overwrite":
+        return config.with_updates(regenerate=True)
+    if mode == "version":
+        return config.with_updates(output_dir=_next_free_dir(config.output_dir))
+    return config
 
 
 def run_scene_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
@@ -750,12 +923,20 @@ def run_scene_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
         raise ValueError("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or provide an API key.")
     library = load_scene_prompt_library(_path_value(form, "prompt_library", default_scene_prompt_library()))
     client = OpenRouterClient(api_key=api_key)
+    config = _apply_scene_write_mode(form, config, library)
+    plan = create_scene_plan(config, library)
     summary = run_scene_generation(config, library, client)
-    return {"kind": "scene-generation", **summary.__dict__}
+    return {
+        "kind": "scene-generation",
+        **summary.__dict__,
+        "output_path": str(plan.output_path),
+        "metadata_path": str(plan.metadata_path),
+        "output_dir": str(plan.output_dir),
+    }
 
 
 def run_avatar_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
-    config = _avatar_config_from_form(form)
+    config = _apply_avatar_write_mode(form, _avatar_config_from_form(form))
     library = load_prompt_library(config.prompt_library)
     plan = create_generation_plan(config, library)
     return {
@@ -778,19 +959,29 @@ def run_avatar_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
 
 
 def run_avatar_generation_from_form(form: dict[str, Any]) -> dict[str, object]:
-    config = _avatar_config_from_form(form)
+    config = _apply_avatar_write_mode(form, _avatar_config_from_form(form))
     api_key = _text_value(form, "api_key") or os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or provide an API key.")
     library = load_prompt_library(config.prompt_library)
     client = OpenRouterClient(api_key=api_key)
+    plan = create_generation_plan(config, library)
     summary = run_generation(config, library, client)
-    return {"kind": "avatar-generation", **summary.__dict__}
+    return {
+        "kind": "avatar-generation",
+        **summary.__dict__,
+        "output_dir": str(plan.output_dir),
+        "items": [
+            {"output_path": str(item.output_path), "metadata_path": str(item.metadata_path)}
+            for item in plan.items
+        ],
+    }
 
 
 def run_messy_fy_dry_run_from_form(form: dict[str, Any]) -> dict[str, object]:
     config = _messy_fy_config_from_form(form)
     library = load_messy_fy_prompt_library(_path_value(form, "prompt_library", default_messy_fy_prompt_library()))
+    config = _apply_messy_fy_write_mode(form, config, library)
     plan = create_messy_fy_plan(config, library)
     return {"kind": "messy-fy-dry-run", **messy_fy_plan_to_dict(plan)}
 
@@ -802,8 +993,19 @@ def run_messy_fy_generation_from_form(form: dict[str, Any]) -> dict[str, object]
         raise ValueError("Missing OpenRouter API credential. Set OPENROUTER_API_KEY or provide an API key.")
     library = load_messy_fy_prompt_library(_path_value(form, "prompt_library", default_messy_fy_prompt_library()))
     client = OpenRouterClient(api_key=api_key)
+    config = _apply_messy_fy_write_mode(form, config, library)
+    plan = create_messy_fy_plan(config, library)
     summary = run_messy_fy_generation(config, library, client)
-    return {"kind": "messy-fy-generation", **summary.__dict__}
+    return {
+        "kind": "messy-fy-generation",
+        **summary.__dict__,
+        "output_path": str(plan.output_path),
+        "metadata_path": str(plan.metadata_path),
+        "transparent_output_path": (
+            str(plan.transparent_output_path) if plan.transparent_output_path else None
+        ),
+        "output_dir": str(plan.output_dir),
+    }
 
 
 def run_background_from_form(form: dict[str, Any]) -> dict[str, object]:
@@ -813,8 +1015,19 @@ def run_background_from_form(form: dict[str, Any]) -> dict[str, object]:
     method = _text_value(form, "method") or "rembg"
     if method not in {"rembg", "flood"}:
         raise ValueError("Background removal method must be rembg or flood")
-    summary = remove_backgrounds(source, output_dir, method=method)
-    return {"kind": "background-removal", **summary.__dict__}
+    mode = _write_mode(form, "skip")
+    if mode == "version":
+        output_dir = _next_free_dir(output_dir)
+    summary = remove_backgrounds(source, output_dir, method=method, overwrite=mode == "overwrite")
+    produced = (
+        sorted(str(p) for p in output_dir.glob("*.png")) if output_dir.is_dir() else []
+    )
+    return {
+        "kind": "background-removal",
+        **summary.__dict__,
+        "output_dir": str(output_dir),
+        "items": [{"output_path": path} for path in produced],
+    }
 
 
 def start_web_server(host: str = DEFAULT_WEB_HOST, port: int = DEFAULT_WEB_PORT) -> None:
@@ -852,7 +1065,7 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
         except (ValueError, OSError):
             self.send_error(403)
             return
-        if not target.is_file() or target.suffix.lower() not in IMAGE_EXTENSIONS:
+        if not target.is_file() or target.suffix.lower() not in SERVABLE_EXTENSIONS:
             self.send_error(404)
             return
         try:
@@ -898,12 +1111,15 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
             else:
                 self.send_error(404)
                 return
-            self._send_html(render_home_page(result=result, workflow=workflow))
+            self._send_html(render_home_page(result=result, workflow=workflow, form=form))
         except CLIENT_DISCONNECT_ERRORS:
             return
         except Exception as exc:
             try:
-                self._send_html(render_home_page(error=str(exc), workflow=workflow), status=400)
+                self._send_html(
+                    render_home_page(error=str(exc), workflow=workflow, form=locals().get("form")),
+                    status=400,
+                )
             except CLIENT_DISCONNECT_ERRORS:
                 return
 

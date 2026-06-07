@@ -8,10 +8,19 @@ system_prompt: >
   Messy stays anime in focus; background partly photorealistic, softly blended.
   Dark poppy-punk mood, subtle blue, pink, and violet neon, soft amber highlights.
 
+  Do not add any text to the image—no titles, captions, labels, headlines,
+  subtitles, signage words, UI text, speech bubbles, or watermarks—unless the
+  Action above explicitly asks for specific written words. Screens, signage, and
+  displays should read as abstract graphics, icons, or charts, never legible
+  words or sentences.
+
   Sparse OHLC charts on screens or signage only if fitting (green up, red down).
   Never wax candles or charts on clothing. No HUD, watermarks, or logos.
 
 negative_prompt: >
-  Second person, twins, clone, crowd, redesign, changed face, hair, eyes, outfit,
-  or art style. Man, gender swap, generic anime woman. Wax candles. Charts on
-  clothing or floating. HUD, watermarks, logos. Extra or missing limbs, bad hands.
+  Added text, title, caption, label, headline, subtitle, written words, letters,
+  typography, signage text, UI text, speech bubble, watermark text, when the
+  action does not request it. Second person, twins, clone, crowd, redesign,
+  changed face, hair, eyes, outfit, or art style. Man, gender swap, generic anime
+  woman. Wax candles. Charts on clothing or floating. HUD, watermarks, logos.
+  Extra or missing limbs, bad hands.

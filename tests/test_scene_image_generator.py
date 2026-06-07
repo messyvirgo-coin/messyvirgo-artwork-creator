@@ -72,9 +72,11 @@ class SceneImageGeneratorTests(unittest.TestCase):
         self.assertIn("Sparse OHLC charts", prompt)
         self.assertIn("Never wax candles", prompt)
         self.assertIn("No HUD", prompt)
+        self.assertIn("Do not add any text", prompt)
         self.assertIn("generic anime woman", library.negative_prompt)
         self.assertIn("Wax candles", library.negative_prompt)
         self.assertIn("gender swap", library.negative_prompt)
+        self.assertIn("Added text", library.negative_prompt)
 
     def test_scene_prompt_rejects_empty_setting_or_action(self):
         library = load_scene_prompt_library(Path("mv_artwork_creator/resources/scene_prompts.yaml"))
