@@ -222,3 +222,8 @@ __marimo__/
 config/
 output/
 .remember/logs/
+
+# Local input samples — only ship the Messy reference PNGs
+input/*
+!input/messy_1.png
+!input/messy_2.png
