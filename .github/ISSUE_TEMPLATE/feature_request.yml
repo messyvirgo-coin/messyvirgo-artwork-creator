@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest an improvement to the mvac CLI, web UI, prompts, or models
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion.
+
+        This repo is maintained best-effort. PRs are welcome, but maintainers may decline changes that increase scope or maintenance burden.
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Problem / motivation
+      description: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User story
+      description: Describe the user-facing outcome in a simple user story format.
+      placeholder: |
+        As a Messy Virgo artwork creator, I want ..., so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      description: What observable outcomes should define done?
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches you considered?
+    validations:
+      required: false

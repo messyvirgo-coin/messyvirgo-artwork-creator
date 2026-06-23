@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: General questions
+    url: https://www.messyvirgo.com
+    about: This repo is best-effort/as-is. Please check the README first.
+  - name: Security reports
+    url: https://www.messyvirgo.com
+    about: Please report suspected vulnerabilities privately to contact@messyvirgo.com (do not open a public issue).

@@ -216,3 +216,32 @@ python3 -m unittest discover -s tests -v
 ```
 
 </details>
+
+---
+
+## Governance
+
+See the [Messy Virgo organization repository](https://github.com/messyvirgo-coin/messyvirgo-org) for cross-repo governance, policies, and community guidelines.
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) and the [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+## Security
+
+Report suspected vulnerabilities privately—see [SECURITY.md](./SECURITY.md). Do not open a public issue.
+
+## Support
+
+This project is provided as-is with best-effort maintenance—see [SUPPORT.md](./SUPPORT.md).
+
+## License
+
+- **Code**: Apache-2.0 (see [LICENSE](./LICENSE))
+- **Brand assets & trademarks**: reserved (see [NOTICE](./NOTICE.md) and [TRADEMARK](./TRADEMARK.md))
+
+The Messy Virgo character, reference images in `input/`, and generated artwork depicting the character are brand assets and are not licensed for reuse.
+
+## Disclaimer
+
+This software is provided **as-is** for creative and educational purposes. Generation runs against the third-party OpenRouter API using your own API key and credit; you are responsible for your usage, costs, and compliance with OpenRouter's and the underlying model providers' terms. The authors are not responsible for generated content or any costs incurred.

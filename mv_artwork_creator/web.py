@@ -4,10 +4,11 @@ import html
 import json
 import mimetypes
 import os
+import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from .background import remove_backgrounds
 from .config import GenerationConfig, default_output_dir
@@ -45,6 +46,7 @@ DEFAULT_INPUT_DIR = Path("input")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 SERVABLE_EXTENSIONS = IMAGE_EXTENSIONS | {".json"}
 PNG_EXTENSIONS = {".png"}
+MAX_UPLOAD_BYTES = 64 * 1024 * 1024
 CLIENT_DISCONNECT_ERRORS = (BrokenPipeError, ConnectionAbortedError, ConnectionResetError)
 WORKFLOW_LABELS = {
     "avatar": "Avatar Reference Set",
@@ -123,7 +125,7 @@ def _file_url(path: Path) -> str:
     return f"/file?path={quote(str(path))}"
 
 
-def _thumb_tile(path: Path, *, selectable: bool) -> str:
+def _thumb_tile(path: Path, *, selectable: bool, deletable: bool = False) -> str:
     value = html.escape(str(path))
     caption = html.escape(path.name)
     tag = "button" if selectable else "div"
@@ -134,7 +136,12 @@ def _thumb_tile(path: Path, *, selectable: bool) -> str:
         media = f'<img loading="lazy" src="{_file_url(path)}" alt="{caption}">'
     else:
         media = '<span class="thumb-folder">·</span>'
-    return f'<{tag}{attrs}><span class="thumb-media">{media}</span><span class="thumb-name">{caption}</span></{tag}>'
+    delete_btn = (
+        f'<button type="button" class="thumb-delete" data-path="{value}" title="Delete this image">✕</button>'
+        if deletable
+        else ""
+    )
+    return f'<{tag}{attrs}><span class="thumb-media">{media}</span><span class="thumb-name">{caption}</span>{delete_btn}</{tag}>'
 
 
 def _render_image_picker(
@@ -153,18 +160,24 @@ def _render_image_picker(
         default_value = html.escape(str(files[0])) if files else ""
     required_attr = " required" if required else ""
     if files:
-        tiles = "".join(_thumb_tile(path, selectable=True) for path in files)
-        grid = f'<div class="thumbgrid">{tiles}</div>'
+        tiles = "".join(_thumb_tile(path, selectable=True, deletable=True) for path in files)
+        grid = f'<div class="thumbgrid" data-filepicker-grid>{tiles}</div>'
         hint = ""
     else:
         grid = (
-            '<div class="thumbgrid empty"><p class="hint">No images in '
-            f'<code>{html.escape(str(default_input_dir()))}/</code> yet — add files there, '
-            "or type a path below.</p></div>"
+            '<div class="thumbgrid empty" data-filepicker-grid><p class="hint">No images in '
+            f'<code>{html.escape(str(default_input_dir()))}/</code> yet — drag images here, '
+            "use the button, or type a path below.</p></div>"
         )
         hint = ""
-    return f"""<div class="field filepicker">
+    toolbar = (
+        f'<div class="filepicker-toolbar">'
+        f'<label class="file-upload-btn">+ Add image<input type="file" accept="image/*" multiple></label>'
+        f'</div>'
+    )
+    return f"""<div class="field filepicker" data-filepicker data-picker-name="{html.escape(name)}">
       <span class="field-label">{label}</span>
+      {toolbar}
       {grid}
       <input class="pathfield" name="{name}" value="{default_value}"{required_attr} placeholder="input/…" autocomplete="off">
     </div>{hint}"""
@@ -291,9 +304,18 @@ PAGE_STYLE = """
       display: flex; flex-direction: column; gap: 6px; padding: 6px; border: 1px solid transparent;
       border-radius: 10px; background: var(--surface-2); color: var(--muted); cursor: pointer;
       font: inherit; text-align: center; transition: border-color .14s, background .14s, transform .12s;
+      position: relative;
     }
     .thumb:hover { background: var(--surface-3); border-color: var(--line); transform: translateY(-2px); }
     .thumb.static { cursor: default; }
+    .thumb-delete {
+      position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; padding: 0;
+      border: 1px solid rgba(255,105,180,.3); border-radius: 6px; background: rgba(220,90,90,.2);
+      color: #ff9b9b; font: inherit; font-weight: 700; font-size: 12px; cursor: pointer;
+      opacity: 0; transition: opacity .14s, background .14s, border-color .14s;
+    }
+    .thumb:hover .thumb-delete { opacity: 1; }
+    .thumb-delete:hover { background: rgba(220,90,90,.4); border-color: rgba(220,90,90,.6); }
     .thumb-media {
       position: relative; display: grid; place-items: center; aspect-ratio: 1; border-radius: 7px; overflow: hidden;
       background:
@@ -313,6 +335,29 @@ PAGE_STYLE = """
       background: var(--pink); box-shadow: 0 2px 8px rgba(0,0,0,.5);
     }
     .pathfield { font-size: 12.5px; color: var(--muted); }
+
+    .filepicker-toolbar {
+      display: flex; gap: 10px; margin-bottom: 10px;
+    }
+    .file-upload-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+      border: 1px solid rgba(255,105,180,.3); border-radius: 9px; background: rgba(255,105,180,.08);
+      color: var(--pink-soft); font: inherit; font-weight: 600; font-size: 12.5px;
+      cursor: pointer; transition: background .14s, border-color .14s;
+    }
+    .file-upload-btn:hover { background: rgba(255,105,180,.12); border-color: rgba(255,105,180,.5); }
+    .file-upload-btn input { display: none; }
+
+    .thumbgrid.dnd-active {
+      border-color: var(--pink); background: rgba(255,105,180,.06);
+    }
+    .filepicker-status {
+      margin-top: 8px; padding: 8px 12px; border-radius: 8px; font-size: 12px;
+      background: rgba(255,105,180,.12); color: var(--pink-soft); display: none;
+    }
+    .filepicker-status.show { display: block; }
+    .filepicker-status.error { background: rgba(220,90,90,.14); color: #ff9b9b; }
+    .filepicker-status.success { background: rgba(80,200,140,.12); color: #6fe0a6; }
 
     .options { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     .toggle {
@@ -399,21 +444,144 @@ PAGE_STYLE = """
 """
 
 PAGE_SCRIPT = """
-  document.querySelectorAll('.filepicker').forEach(function (fp) {
-    var field = fp.querySelector('.pathfield');
-    var thumbs = fp.querySelectorAll('.thumb');
+  function refreshFilePicker(pickerName) {
+    fetch('/api/list-input-images')
+      .then(r => r.json())
+      .then(files => {
+        const fp = document.querySelector('[data-filepicker][data-picker-name="' + pickerName + '"]');
+        if (!fp) return;
+        const grid = fp.querySelector('[data-filepicker-grid]');
+        if (!files.length) {
+          grid.className = 'thumbgrid empty';
+          grid.innerHTML = '<p class="hint">No images in <code>input/</code> yet — drag images here, use the button, or type a path below.</p>';
+        } else {
+          grid.className = 'thumbgrid';
+          grid.innerHTML = files.map(f => {
+            const escaped = f.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const name = escaped.split('/').pop();
+            const img = '<img loading="lazy" src="/file?path=' + encodeURIComponent(f) + '" alt="' + name + '">';
+            return '<button type="button" class="thumb" data-value="' + escaped + '">' +
+              '<span class="thumb-media">' + img + '</span>' +
+              '<span class="thumb-name">' + name + '</span>' +
+              '<button type="button" class="thumb-delete" data-path="' + escaped + '" title="Delete this image">✕</button>' +
+              '</button>';
+          }).join('');
+          syncSelection(fp);
+        }
+      })
+      .catch(e => showStatus(fp, 'Error refreshing images: ' + e.message, 'error'));
+  }
+
+  function syncSelection(fp) {
+    const field = fp.querySelector('.pathfield');
+    const thumbs = fp.querySelectorAll('.thumb');
     if (!field) return;
-    function sync() {
-      thumbs.forEach(function (t) {
-        t.classList.toggle('is-selected', t.dataset.value === field.value);
-      });
-    }
-    thumbs.forEach(function (t) {
-      t.addEventListener('click', function () { field.value = t.dataset.value; sync(); });
+    thumbs.forEach(t => {
+      t.classList.toggle('is-selected', t.dataset.value === field.value);
     });
-    field.addEventListener('input', sync);
-    sync();
+  }
+
+  function showStatus(fp, msg, cls) {
+    let status = fp.querySelector('.filepicker-status');
+    if (!status) {
+      status = document.createElement('div');
+      status.className = 'filepicker-status';
+      fp.appendChild(status);
+    }
+    status.textContent = msg;
+    status.className = 'filepicker-status show ' + (cls || '');
+    setTimeout(() => status.classList.remove('show'), 3000);
+  }
+
+  document.querySelectorAll('[data-filepicker]').forEach(function (fp) {
+    const pickerName = fp.dataset.pickerName;
+    const field = fp.querySelector('.pathfield');
+    const grid = fp.querySelector('[data-filepicker-grid]');
+    const fileInput = fp.querySelector('input[type="file"]');
+
+    if (!field || !grid) return;
+
+    grid.addEventListener('dragover', e => {
+      e.preventDefault();
+      grid.classList.add('dnd-active');
+    });
+    grid.addEventListener('dragleave', () => grid.classList.remove('dnd-active'));
+    grid.addEventListener('drop', e => {
+      e.preventDefault();
+      grid.classList.remove('dnd-active');
+      handleFileDrop(e.dataTransfer.files, fp, pickerName);
+    });
+
+    if (fileInput) {
+      fileInput.addEventListener('change', e => {
+        handleFileDrop(e.target.files, fp, pickerName);
+      });
+      fp.querySelector('.file-upload-btn').addEventListener('click', () => fileInput.click());
+    }
+
+    grid.addEventListener('click', e => {
+      if (e.target.classList.contains('thumb')) {
+        field.value = e.target.dataset.value;
+        syncSelection(fp);
+      }
+      if (e.target.classList.contains('thumb-delete')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const path = e.target.dataset.path;
+        if (confirm('Delete ' + path.split('/').pop() + '?')) {
+          fetch('/api/delete-input-image', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: 'path=' + encodeURIComponent(path)
+          })
+          .then(r => r.json())
+          .then(j => {
+            if (j.ok) {
+              showStatus(fp, 'Deleted', 'success');
+              refreshFilePicker(pickerName);
+            } else {
+              showStatus(fp, j.error || 'Delete failed', 'error');
+            }
+          })
+          .catch(e => showStatus(fp, 'Error: ' + e.message, 'error'));
+        }
+      }
+    });
+
+    field.addEventListener('input', () => syncSelection(fp));
   });
+
+  function handleFileDrop(files, fp, pickerName) {
+    if (!files.length) return;
+    const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (!validFiles.length) {
+      showStatus(fp, 'No image files found', 'error');
+      return;
+    }
+
+    const grid = fp.querySelector('[data-filepicker-grid]');
+    grid.classList.add('dnd-active');
+
+    let uploaded = 0;
+    validFiles.forEach(file => {
+      const fd = new FormData();
+      fd.append('file', file);
+      fetch('/api/upload-input-image', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(j => {
+          if (j.ok) {
+            uploaded++;
+            if (uploaded === validFiles.length) {
+              showStatus(fp, 'Uploaded ' + uploaded + ' image(s)', 'success');
+              refreshFilePicker(pickerName);
+            }
+          } else {
+            showStatus(fp, j.error || 'Upload failed', 'error');
+          }
+        })
+        .catch(e => showStatus(fp, 'Upload error: ' + e.message, 'error'));
+    });
+  }
 
   document.querySelectorAll('form.workform').forEach(function (form) {
     form.addEventListener('submit', function (event) {
@@ -1048,6 +1216,9 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/file":
             self._serve_file(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/list-input-images":
+            self._api_list_input_images()
+            return
         if parsed.path != "/":
             self.send_error(404)
             return
@@ -1084,7 +1255,19 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
         except CLIENT_DISCONNECT_ERRORS:
             return
 
+    def _api_list_input_images(self) -> None:
+        files = list_input_dir_images()
+        self._send_json({"ok": True, "files": [str(f) for f in files]})
+
     def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/upload-input-image":
+            self._api_upload_input_image()
+            return
+        if parsed.path == "/api/delete-input-image":
+            self._api_delete_input_image()
+            return
+
         workflow = _workflow_for_post_path(self.path)
         try:
             form = self._read_form()
@@ -1138,6 +1321,108 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _send_json(self, data: dict[str, Any], status: int = 200) -> None:
+        encoded = json.dumps(data).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _api_upload_input_image(self) -> None:
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+            if content_length > MAX_UPLOAD_BYTES:
+                self._send_json({"ok": False, "error": "File too large"}, status=413)
+                return
+            
+            ctype = self.headers.get("Content-Type", "")
+            if not ctype.startswith("multipart/form-data"):
+                self._send_json({"ok": False, "error": "Invalid content type"}, status=400)
+                return
+
+            boundary = ctype.split("boundary=")[1] if "boundary=" in ctype else ""
+            if not boundary:
+                self._send_json({"ok": False, "error": "No boundary"}, status=400)
+                return
+
+            raw_body = self.rfile.read(content_length)
+            parts = raw_body.split(f"--{boundary}".encode())
+            
+            for part in parts:
+                if b"filename=" not in part:
+                    continue
+                
+                try:
+                    header_end = part.find(b"\r\n\r\n")
+                    if header_end == -1:
+                        header_end = part.find(b"\n\n")
+                        if header_end == -1:
+                            continue
+                        file_data = part[header_end + 2:]
+                    else:
+                        file_data = part[header_end + 4:]
+                    
+                    file_data = file_data.rstrip(b"\r\n").rstrip(b"\n")
+                    
+                    header_section = part[:header_end].decode("utf-8", errors="ignore")
+                    filename_match = header_section.split("filename=")[-1].strip('"').strip("'")
+                    filename = filename_match.split("\\")[-1].split("/")[-1]
+                    
+                    if not filename:
+                        continue
+                    
+                    ext = Path(filename).suffix.lower()
+                    if ext not in IMAGE_EXTENSIONS:
+                        continue
+                    
+                    input_dir = default_input_dir()
+                    input_dir.mkdir(exist_ok=True)
+                    target = (input_dir / filename).resolve()
+                    
+                    try:
+                        target.relative_to(input_dir.resolve())
+                    except ValueError:
+                        self._send_json({"ok": False, "error": "Invalid path"}, status=403)
+                        return
+                    
+                    target.write_bytes(file_data)
+                    self._send_json({"ok": True, "file": str(target)})
+                    return
+                except Exception as e:
+                    continue
+            
+            self._send_json({"ok": False, "error": "No image file found"}, status=400)
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, status=500)
+
+    def _api_delete_input_image(self) -> None:
+        try:
+            form = self._read_form()
+            path_str = _text_value(form, "path")
+            if not path_str:
+                self._send_json({"ok": False, "error": "No path provided"}, status=400)
+                return
+            
+            target = Path(path_str).resolve()
+            input_dir = default_input_dir().resolve()
+            
+            try:
+                target.relative_to(input_dir)
+            except ValueError:
+                self._send_json({"ok": False, "error": "Path outside input folder"}, status=403)
+                return
+            
+            if not target.is_file():
+                self._send_json({"ok": False, "error": "File not found"}, status=404)
+                return
+            
+            target.unlink()
+            self._send_json({"ok": True})
+        except Exception as exc:
+            self._send_json({"ok": False, "error": str(exc)}, status=500)
+
 
 
 def _scene_config_from_form(form: dict[str, Any]) -> SceneGenerationConfig:
