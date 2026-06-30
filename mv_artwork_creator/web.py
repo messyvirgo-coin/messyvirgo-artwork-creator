@@ -4,11 +4,10 @@ import html
 import json
 import mimetypes
 import os
-import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from .background import remove_backgrounds
 from .config import GenerationConfig, default_output_dir
@@ -125,11 +124,30 @@ def _file_url(path: Path) -> str:
     return f"/file?path={quote(str(path))}"
 
 
+def _parse_multipart_filename(header_section: str) -> str | None:
+    for line in header_section.splitlines():
+        if "content-disposition" not in line.lower():
+            continue
+        for piece in line.split(";"):
+            piece = piece.strip()
+            if not piece.lower().startswith("filename="):
+                continue
+            raw = piece.split("=", 1)[1].strip()
+            if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in {'"', "'"}:
+                raw = raw[1:-1]
+            name = raw.split("\\")[-1].split("/")[-1].strip()
+            return name or None
+    return None
+
+
 def _thumb_tile(path: Path, *, selectable: bool, deletable: bool = False) -> str:
     value = html.escape(str(path))
     caption = html.escape(path.name)
-    tag = "button" if selectable else "div"
-    attrs = ' type="button" class="thumb" data-value="' + value + '"' if selectable else ' class="thumb static"'
+    tag = "div"
+    if selectable:
+        attrs = f' class="thumb" data-value="{value}" role="button" tabindex="0"'
+    else:
+        attrs = ' class="thumb static"'
     if path.is_dir():
         media = f'<span class="thumb-folder">{_FOLDER_ICON}</span>'
     elif path.suffix.lower() in IMAGE_EXTENSIONS:
@@ -166,8 +184,8 @@ def _render_image_picker(
     else:
         grid = (
             '<div class="thumbgrid empty" data-filepicker-grid><p class="hint">No images in '
-            f'<code>{html.escape(str(default_input_dir()))}/</code> yet — drag images here, '
-            "use the button, or type a path below.</p></div>"
+            f'<code>{html.escape(str(default_input_dir()))}/</code> yet — drag images here '
+            "or use the button above.</p></div>"
         )
         hint = ""
     toolbar = (
@@ -179,7 +197,7 @@ def _render_image_picker(
       <span class="field-label">{label}</span>
       {toolbar}
       {grid}
-      <input class="pathfield" name="{name}" value="{default_value}"{required_attr} placeholder="input/…" autocomplete="off">
+      <input type="hidden" class="pathfield" name="{name}" value="{default_value}"{required_attr}>
     </div>{hint}"""
 
 
@@ -447,29 +465,39 @@ PAGE_SCRIPT = """
   function refreshFilePicker(pickerName) {
     fetch('/api/list-input-images')
       .then(r => r.json())
-      .then(files => {
+      .then(data => {
+        const files = data.files || [];
         const fp = document.querySelector('[data-filepicker][data-picker-name="' + pickerName + '"]');
         if (!fp) return;
         const grid = fp.querySelector('[data-filepicker-grid]');
         if (!files.length) {
           grid.className = 'thumbgrid empty';
-          grid.innerHTML = '<p class="hint">No images in <code>input/</code> yet — drag images here, use the button, or type a path below.</p>';
+          grid.innerHTML = '<p class="hint">No images in <code>input/</code> yet — drag images here or use the button above.</p>';
+          const field = fp.querySelector('.pathfield');
+          if (field) field.value = '';
         } else {
           grid.className = 'thumbgrid';
           grid.innerHTML = files.map(f => {
             const escaped = f.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             const name = escaped.split('/').pop();
             const img = '<img loading="lazy" src="/file?path=' + encodeURIComponent(f) + '" alt="' + name + '">';
-            return '<button type="button" class="thumb" data-value="' + escaped + '">' +
+            return '<div class="thumb" data-value="' + escaped + '" role="button" tabindex="0">' +
               '<span class="thumb-media">' + img + '</span>' +
               '<span class="thumb-name">' + name + '</span>' +
               '<button type="button" class="thumb-delete" data-path="' + escaped + '" title="Delete this image">✕</button>' +
-              '</button>';
+              '</div>';
           }).join('');
+          const field = fp.querySelector('.pathfield');
+          if (field && (!field.value || !files.includes(field.value))) {
+            field.value = files[0];
+          }
           syncSelection(fp);
         }
       })
-      .catch(e => showStatus(fp, 'Error refreshing images: ' + e.message, 'error'));
+      .catch(e => {
+        const fp = document.querySelector('[data-filepicker][data-picker-name="' + pickerName + '"]');
+        if (fp) showStatus(fp, 'Error refreshing images: ' + e.message, 'error');
+      });
   }
 
   function syncSelection(fp) {
@@ -515,19 +543,16 @@ PAGE_SCRIPT = """
     if (fileInput) {
       fileInput.addEventListener('change', e => {
         handleFileDrop(e.target.files, fp, pickerName);
+        e.target.value = '';
       });
-      fp.querySelector('.file-upload-btn').addEventListener('click', () => fileInput.click());
     }
 
     grid.addEventListener('click', e => {
-      if (e.target.classList.contains('thumb')) {
-        field.value = e.target.dataset.value;
-        syncSelection(fp);
-      }
-      if (e.target.classList.contains('thumb-delete')) {
+      const deleteBtn = e.target.closest('.thumb-delete');
+      if (deleteBtn) {
         e.preventDefault();
         e.stopPropagation();
-        const path = e.target.dataset.path;
+        const path = deleteBtn.dataset.path;
         if (confirm('Delete ' + path.split('/').pop() + '?')) {
           fetch('/api/delete-input-image', {
             method: 'POST',
@@ -543,12 +568,19 @@ PAGE_SCRIPT = """
               showStatus(fp, j.error || 'Delete failed', 'error');
             }
           })
-          .catch(e => showStatus(fp, 'Error: ' + e.message, 'error'));
+          .catch(err => showStatus(fp, 'Error: ' + err.message, 'error'));
         }
+        return;
+      }
+      const thumb = e.target.closest('.thumb');
+      if (thumb && thumb.dataset.value) {
+        field.value = thumb.dataset.value;
+        syncSelection(fp);
       }
     });
 
-    field.addEventListener('input', () => syncSelection(fp));
+    field.addEventListener('change', () => syncSelection(fp));
+    syncSelection(fp);
   });
 
   function handleFileDrop(files, fp, pickerName) {
@@ -1367,9 +1399,7 @@ class _GeneratorRequestHandler(BaseHTTPRequestHandler):
                     file_data = file_data.rstrip(b"\r\n").rstrip(b"\n")
                     
                     header_section = part[:header_end].decode("utf-8", errors="ignore")
-                    filename_match = header_section.split("filename=")[-1].strip('"').strip("'")
-                    filename = filename_match.split("\\")[-1].split("/")[-1]
-                    
+                    filename = _parse_multipart_filename(header_section)
                     if not filename:
                         continue
                     
